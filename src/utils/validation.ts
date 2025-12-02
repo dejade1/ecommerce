@@ -1,5 +1,5 @@
 /**
- * ARCHIVO NUEVO: utils/validation.ts
+ * ARCHIVO CORREGIDO: utils/validation.ts
  * 
  * Sistema de validación y sanitización de datos
  * 
