@@ -537,28 +537,7 @@ export const productValidationSchema = {
     description: [{ maxLength: 5000 }] as ValidationRule[],
 };
 
-// ==================== EXPORTACIONES ====================
 
-export {
-    sanitizeString,
-    sanitizeHTML,
-    sanitizeNumber,
-    sanitizeEmail,
-    sanitizeURL,
-    isRequired,
-    isValidEmail,
-    isValidUsername,
-    isStrongPassword,
-    getPasswordStrength,
-    isValidNumber,
-    isValidURL,
-    isValidDate,
-    isFutureDate,
-    isPastDate,
-    validateField,
-    validateFields,
-    validateOrThrow,
-};
 
 /**
  * ==================== EJEMPLO DE USO ====================
