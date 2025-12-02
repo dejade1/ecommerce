@@ -8,25 +8,41 @@ export function useAuth() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const { handleError } = useErrorHandler();
 
+    // ✅ CORREGIDO: logout definido antes para usarlo en dependencias
+    const logout = useCallback(async () => {
+        try {
+            await authService.logout();
+        } catch (error) {
+            console.error('Error al cerrar sesión:', error);
+        } finally {
+            setUser(null);
+            setIsAuthenticated(false);
+            // Opcional: recargar página para limpiar estados
+            window.location.href = '/';
+        }
+    }, []);
+
     // Cargar usuario al montar el componente
     useEffect(() => {
         loadUser();
     }, []);
 
-    // Configurar refresh token automático
+    // ✅ CORREGIDO: logout agregado a dependencias (previene memory leak)
     useEffect(() => {
-        if (isAuthenticated) {
-            // Refrescar token cada 14 minutos (antes de que expire el de 15 min)
-            const interval = setInterval(() => {
-                authService.refreshToken().catch(() => {
-                    // Si falla el refresh (ej. sesión expirada), hacer logout
-                    logout();
-                });
-            }, 14 * 60 * 1000);
+        if (!isAuthenticated) return;
 
-            return () => clearInterval(interval);
-        }
-    }, [isAuthenticated]);
+        // Refrescar token cada 14 minutos (antes de que expire el de 15 min)
+        const interval = setInterval(async () => {
+            try {
+                await authService.refreshToken();
+            } catch (error) {
+                console.error('Token refresh failed, logging out:', error);
+                logout();
+            }
+        }, 14 * 60 * 1000);
+
+        return () => clearInterval(interval);
+    }, [isAuthenticated, logout]); // ✅ Incluir logout
 
     const loadUser = async () => {
         try {
@@ -55,19 +71,6 @@ export function useAuth() {
             throw error;
         }
     }, [handleError]);
-
-    const logout = useCallback(async () => {
-        try {
-            await authService.logout();
-        } catch (error) {
-            console.error('Error al cerrar sesión:', error);
-        } finally {
-            setUser(null);
-            setIsAuthenticated(false);
-            // Opcional: recargar página para limpiar estados
-            window.location.href = '/';
-        }
-    }, []);
 
     return {
         user,

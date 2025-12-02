@@ -29,12 +29,49 @@ import { PrismaClient } from '@prisma/client';
 // ==================== CONFIGURACIÓN ====================
 
 const app = express();
-const prisma = new PrismaClient();
+
+// ✅ CORREGIDO: Prisma con configuración de producción
+const prisma = new PrismaClient({
+    log: process.env.NODE_ENV === 'development'
+        ? ['query', 'error', 'warn']
+        : ['error'],
+    errorFormat: 'pretty',
+});
+
+// ✅ Middleware para timeout de queries (previene queries lentas)
+prisma.$use(async (params, next) => {
+    const timeoutMs = 10000; // 10 segundos
+    try {
+        const result = await Promise.race([
+            next(params),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Database query timeout')), timeoutMs)
+            )
+        ]);
+        return result;
+    } catch (error) {
+        console.error(`[DB ERROR] ${params.model}.${params.action} failed:`, error);
+        throw error;
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 
-// Constantes de seguridad
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret';
+// ✅ CORREGIDO: Secretos JWT son OBLIGATORIOS (Seguridad crítica)
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('❌ FATAL: JWT_SECRET must be set in environment and be at least 32 characters');
+}
+
+if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 32) {
+    throw new Error('❌ FATAL: JWT_REFRESH_SECRET must be set in environment and be at least 32 characters');
+}
+
+// After validation, we can safely assert these are strings (using 'as string' to satisfy TypeScript)
+const JWT_SECRET = process.env.JWT_SECRET as string;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
+
+console.log('✅ JWT secrets validated successfully');
+
 const SALT_ROUNDS = 12;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
@@ -528,7 +565,7 @@ app.use((req: Request, res: Response) => {
     res.status(404).json({ error: 'Ruta no encontrada' });
 });
 
-// Error handler global
+// ✅ MEJORADO: Error handler global con mejor estructura
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     console.error('[ERROR] Unhandled error:', err);
 
@@ -536,29 +573,39 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
         error: process.env.NODE_ENV === 'production'
             ? 'Error interno del servidor'
             : err.message,
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
     });
 });
 
 // ==================== INICIO DEL SERVIDOR ====================
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security features enabled`);
+    console.log(`✅ All validations passed`);
 });
 
-// Manejo de cierre graceful
-process.on('SIGTERM', async () => {
-    console.log('SIGTERM received, closing server...');
-    await prisma.$disconnect();
-    process.exit(0);
-});
+// ✅ MEJORADO: Graceful shutdown con timeout
+async function gracefulShutdown(signal: string) {
+    console.log(`\n${signal} received, closing server gracefully...`);
 
-process.on('SIGINT', async () => {
-    console.log('SIGINT received, closing server...');
-    await prisma.$disconnect();
-    process.exit(0);
-});
+    server.close(async () => {
+        console.log('HTTP server closed');
+        await prisma.$disconnect();
+        console.log('Database disconnected');
+        process.exit(0);
+    });
+
+    // Force shutdown after 10 seconds if graceful shutdown fails
+    setTimeout(() => {
+        console.error('Forced shutdown after timeout');
+        process.exit(1);
+    }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 /**
  * ==================== NOTAS DE IMPLEMENTACIÓN ====================

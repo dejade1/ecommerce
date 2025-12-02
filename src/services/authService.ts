@@ -2,6 +2,7 @@ import { ValidationError, NetworkError, AuthenticationError } from '../utils/err
 import { sanitizeString, sanitizeEmail } from '../utils/validation';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const REQUEST_TIMEOUT = 10000; // ✅ Timeout de 10 segundos para requests
 
 export interface LoginCredentials {
     username: string;
@@ -20,6 +21,10 @@ class AuthService {
         endpoint: string,
         options: RequestInit = {}
     ): Promise<T> {
+        // ✅ Agregado timeout a requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
         try {
             const response = await fetch(`${API_URL}${endpoint}`, {
                 ...options,
@@ -28,7 +33,10 @@ class AuthService {
                     'Content-Type': 'application/json',
                     ...options.headers,
                 },
+                signal: controller.signal,
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const error = await response.json().catch(() => ({ error: 'Error desconocido' }));
@@ -51,13 +59,15 @@ class AuthService {
             return response.json();
 
         } catch (error) {
+            clearTimeout(timeoutId);
+
             if (error instanceof AuthenticationError || error instanceof ValidationError) {
                 throw error;
             }
 
-            if (error instanceof TypeError) {
-                // Error de red (fetch falló)
-                throw new NetworkError('No se pudo conectar con el servidor. Verifica que el backend esté corriendo en el puerto 3000.');
+            if (error instanceof TypeError || (error as Error).name === 'AbortError') {
+                // Error de red o timeout
+                throw new NetworkError('No se pudo conectar con el servidor. Verifica que el backend esté corriendo.');
             }
 
             throw error;
@@ -80,13 +90,27 @@ class AuthService {
         });
     }
 
+    // ✅ MEJORADO: Mejor manejo de errores
     async getCurrentUser(): Promise<User | null> {
         try {
             const data = await this.request<{ user: User }>('/api/auth/me');
             return data.user;
-        } catch {
+        } catch (error) {
+            // Solo retornar null si es 401 (no autenticado)
+            if (error instanceof AuthenticationError) {
+                return null;
+            }
+            // Otros errores (red, servidor) se loguean pero no rompen
+            console.error('Error fetching current user:', error);
             return null;
         }
+    }
+
+    // ✅ AGREGADO: Método refreshToken faltante (llamado por useAuth.ts)
+    async refreshToken(): Promise<void> {
+        await this.request('/api/auth/refresh', {
+            method: 'POST',
+        });
     }
 }
 

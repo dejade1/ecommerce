@@ -48,6 +48,10 @@ export const VALIDATION_RULES = {
     URL_PATTERN: /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/,
 } as const;
 
+// ✅ OPTIMIZACIÓN: Compilar regex de caracteres especiales una sola vez (evita ReDoS)
+const SPECIAL_CHARS_ESCAPED = VALIDATION_RULES.PASSWORD_SPECIAL_CHARS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SPECIAL_CHARS_REGEX = new RegExp(`[${SPECIAL_CHARS_ESCAPED}]`);
+
 export const ERROR_MESSAGES = {
     REQUIRED_FIELD: 'Este campo es obligatorio',
     INVALID_EMAIL: 'Email inválido',
@@ -258,7 +262,7 @@ export function isStrongPassword(password: string): boolean {
         hasUpperCase: /[A-Z]/.test(password),
         hasLowerCase: /[a-z]/.test(password),
         hasNumber: /\d/.test(password),
-        hasSpecial: new RegExp(`[${VALIDATION_RULES.PASSWORD_SPECIAL_CHARS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]`).test(password),
+        hasSpecial: SPECIAL_CHARS_REGEX.test(password), // ✅ Reusar regex compilado
     };
 
     return (
@@ -303,7 +307,7 @@ export function getPasswordStrength(password: string): {
         feedback.push('Incluye al menos un número');
     }
 
-    if (new RegExp(`[${VALIDATION_RULES.PASSWORD_SPECIAL_CHARS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}]`).test(password)) {
+    if (SPECIAL_CHARS_REGEX.test(password)) { // ✅ Reusar regex compilado
         score += 1;
     } else {
         feedback.push('Incluye al menos un símbolo');

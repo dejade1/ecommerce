@@ -137,6 +137,42 @@ export async function consumeBatchesFIFO(
 }
 
 /**
+ * Obtiene todos los lotes de un producto específico
+ */
+export async function getBatchesByProduct(productId: number): Promise<Batch[]> {
+  await db.ensureInitialized();
+  return db.batches
+    .where('productId')
+    .equals(productId)
+    .toArray();
+}
+
+/**
+ * Actualiza la cantidad de un lote específico
+ */
+export async function updateBatchQuantity(batchId: number, newQuantity: number): Promise<void> {
+  await db.transaction('rw', [db.batches, db.products], async () => {
+    const batch = await db.batches.get(batchId);
+    if (!batch) {
+      throw new AppError(`Lote ${batchId} no encontrado`, ErrorCode.NOT_FOUND);
+    }
+
+    const oldQuantity = batch.quantity;
+    const difference = newQuantity - oldQuantity;
+
+    // Actualizar cantidad del lote
+    await db.batches.update(batchId, { quantity: newQuantity });
+
+    // Actualizar stock del producto
+    const product = await db.products.get(batch.productId);
+    if (product) {
+      const newStock = product.stock + difference;
+      await db.products.update(batch.productId, { stock: newStock });
+    }
+  });
+}
+
+/**
  * Obtiene lotes próximos a vencer
  */
 export async function getExpiringBatches(daysThreshold: number = 7): Promise<Batch[]> {

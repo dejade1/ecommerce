@@ -391,75 +391,15 @@ import { useState, useCallback } from 'react';
 
 /**
  * Hook para manejo de errores en componentes
+ *
+ * ✅ CORREGIDO: Ya no hay variable shadowing
  */
 export function useErrorHandler() {
     const [error, setError] = useState<AppError | null>(null);
 
-    const handleError = useCallback((err: unknown) => {
-        const appError = handleError(err); // Recursive call? No, it's shadowing the imported function.
-        // Wait, the imported function is named `handleError` too.
-        // I should rename the local variable or the imported function.
-        // The original code had `const appError = handleError(err);` which refers to the imported function.
-        // But inside `useErrorHandler`, `handleError` is the name of the returned function.
-        // This might be a scope issue in the original code or my copy.
-        // Let's check the original code again.
-        // Line 396: `const appError = handleError(err);`
-        // Line 393: `export function useErrorHandler() {`
-        // Line 396 is inside `useCallback`.
-        // The `handleError` being called is likely the imported one.
-        // But `handleError` is also the name of the const being defined by `useCallback`.
-        // This is a shadowing issue.
-        // I will fix it by renaming the imported function usage or the local variable.
-        // Actually, in the `useCallback` body, `handleError` refers to the variable being assigned to? No.
-        // It refers to the outer scope `handleError` unless it's recursive.
-        // But `const handleError = ...` is not hoisted.
-        // So `handleError(err)` inside the callback refers to the imported function.
-        // This is fine.
-
-        // However, to be safe and clean, I will rename the local function to `handleErrorCallback`.
-        // Wait, the user wants me to replace with the "CORRECTED" code.
-        // If the corrected code has this, I should probably keep it unless it's a bug.
-        // It is valid JS because the variable is not initialized yet when the closure is created?
-        // No, `useCallback` takes a function. Inside that function, `handleError` refers to the imported one because the local `handleError` is not yet defined in the scope of the callback body?
-        // Actually, `const handleError = ...` puts `handleError` in the TDZ (Temporal Dead Zone) if accessed.
-        // But the function passed to `useCallback` is not executed immediately.
-        // When it IS executed, `handleError` (local) will be defined.
-        // So it will refer to ITSELF (recursion) if not careful?
-        // No, `const` has block scope.
-        // If I use `handleError` inside the arrow function, it resolves to the `handleError` in the scope where the arrow function is defined.
-        // Since `const handleError` is in the same scope, it might shadow.
-        // But since it's an arrow function assigned to `handleError`, the name `handleError` inside it...
-        // Actually, this is a common pattern.
-        // Let's assume the "CORRECTED" code is correct enough or I should fix it if it's a bug.
-        // I will check if I can import `handleError` as `handleGlobalError` to avoid confusion.
-        // But I am replacing the file content. I should stick to the provided content but maybe fix this small ambiguity if I can.
-        // I'll stick to the provided content to be faithful to "CODIGO_CORREGIDO".
-        // Wait, looking at the file content again:
-        // Line 396: `const appError = handleError(err);`
-        // This calls the imported `handleError`.
-        // The `handleError` const is defined on line 396? No, line 396 is inside the callback.
-        // The callback is assigned to `handleError` on line 396? No.
-        // `const handleError = useCallback(...)` is on line 396 in my thought?
-        // Let's look at the file content line 396.
-        // `const handleError = useCallback((err: unknown) => {`
-        // Inside: `const appError = handleError(err);`
-        // This looks like infinite recursion if `handleError` resolves to the local const.
-        // BUT, `handleError` (imported) is at the top level.
-        // `useErrorHandler` is a function.
-        // Inside `useErrorHandler`: `const handleError = ...`
-        // Inside the callback: `handleError(err)`
-        // Yes, the local `handleError` shadows the imported one.
-        // So this IS a bug in the "CORRECTED" code. It will cause a stack overflow or "is not a function" error.
-        // I MUST fix this.
-        // I will alias the imported `handleError` to `createAppError` or similar, or call it `globalHandleError`.
-        // Or I will rename the hook's returned function to `submitError` or something.
-        // I'll rename the imported function usage inside the hook to `handleError(err)` -> `globalHandleError(err)`.
-        // And I need to make sure `globalHandleError` is available.
-        // I can just rename the imported function at the top?
-        // No, it's an export.
-        // I will just use `handleError as createError`? No.
-        // I will change the local variable name in `useErrorHandler` to `handleErrorCallback` and return it as `handleError`.
-
+    // ✅ Renombrado para evitar shadowing con la función importada handleError
+    const handleErrorCallback = useCallback((err: unknown) => {
+        const appError = handleError(err); // ✅ Llama correctamente a la función importada
         setError(appError);
         logger.error(appError.message, err as Error);
     }, []);
@@ -470,7 +410,7 @@ export function useErrorHandler() {
 
     return {
         error,
-        handleError,
+        handleError: handleErrorCallback, // ✅ Expone con el nombre esperado
         clearError,
         hasError: error !== null,
     };

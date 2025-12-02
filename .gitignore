@@ -44,3 +44,4 @@ dev.sqbpro
 # Logs
 logs/
 *.log
+nul

@@ -40,9 +40,14 @@ model Product {
   category    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   batches     Batch[]
   orderItems  OrderItem[]
+
+  // ✅ OPTIMIZACIÓN: Índices para búsquedas comunes
+  @@index([title])    // Para búsquedas por nombre
+  @@index([category]) // Para filtrado por categoría
+  @@index([stock])    // Para queries de stock bajo
 }
 
 model Batch {
@@ -53,6 +58,11 @@ model Batch {
   quantity       Int
   expiryDate     DateTime
   createdAt      DateTime @default(now())
+
+  // ✅ OPTIMIZACIÓN: Índices para mejorar performance de queries FIFO
+  @@index([productId, expiryDate]) // Para consumeBatchesFIFO (query más crítica)
+  @@index([expiryDate])            // Para getExpiringBatches
+  @@index([batchCode])             // Para búsquedas por código de lote
 }
 
 model Order {
@@ -61,6 +71,10 @@ model Order {
   status    String      @default("completed")
   createdAt DateTime    @default(now())
   items     OrderItem[]
+
+  // ✅ OPTIMIZACIÓN: Índices para historial de órdenes
+  @@index([createdAt]) // Para ordenar por fecha
+  @@index([status])    // Para filtrar por estado
 }
 
 model OrderItem {

@@ -12,6 +12,9 @@ import { db } from './db';
 import { consumeBatchesFIFO } from './batch-service'; // Usar la versión corregida
 import { AppError, ErrorCode } from '../utils/errorHandler';
 
+// Re-export db for components that need direct access
+export { db };
+
 export interface Product {
   id?: number;
   title: string;
@@ -38,6 +41,28 @@ export interface Order {
   total: number;
   status: 'pending' | 'completed' | 'cancelled';
   createdAt: Date;
+}
+
+/**
+ * Obtiene todos los productos de la base de datos
+ */
+export async function getAllProducts(): Promise<Product[]> {
+  await db.ensureInitialized();
+  return db.products.toArray();
+}
+
+/**
+ * Actualiza el stock de un producto
+ * @param productId ID del producto
+ * @param newStock Nuevo valor de stock
+ */
+export async function updateStock(productId: number, newStock: number): Promise<void> {
+  await db.ensureInitialized();
+  const product = await db.products.get(productId);
+  if (!product) {
+    throw new AppError(`Producto ${productId} no encontrado`, ErrorCode.NOT_FOUND);
+  }
+  await db.products.update(productId, { stock: newStock, updatedAt: new Date() });
 }
 
 /**

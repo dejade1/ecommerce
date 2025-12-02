@@ -5,18 +5,26 @@ class LedService {
   async connect(): Promise<boolean> {
     try {
       console.log('[LedService] Verificando conexión ESP32...');
+
+      // ✅ OPTIMIZACIÓN: Timeout corto de 1 segundo para no bloquear la UI
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
+
       const response = await fetch(`${this.baseUrl}/status`, {
         method: 'GET',
         mode: 'cors',
+        signal: controller.signal,
       });
-      
+
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const data = await response.json();
         this.isConnected = data.status === 'online';
         console.log('[LedService] ESP32 conectado:', data);
         return this.isConnected;
       }
-      
+
       return false;
     } catch (error) {
       console.error('[LedService] Error conectando:', error);
@@ -28,15 +36,22 @@ class LedService {
   async sendProductSignal(productId: number, quantity: number): Promise<boolean> {
     try {
       console.log(`[LedService] Dispensando producto ${productId}, cantidad ${quantity}`);
-      
+
+      // ✅ OPTIMIZACIÓN: Timeout corto de 1 segundo
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1000);
+
       const response = await fetch(`${this.baseUrl}/blink`, {
         method: 'POST',
         mode: 'cors',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ productId, quantity })
+        body: JSON.stringify({ productId, quantity }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const error = await response.json();
