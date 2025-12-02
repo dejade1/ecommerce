@@ -2,6 +2,8 @@
 node_modules/
 npm-debug.log
 yarn-error.log
+pnpm-debug.log*
+lerna-debug.log*
 
 # Variables de entorno y secretos (¡MUY IMPORTANTE!)
 .env
@@ -12,8 +14,10 @@ yarn-error.log
 
 # Build outputs
 dist/
+dist-ssr/
 build/
 out/
+*.local
 
 # Base de datos local
 *.db
@@ -21,10 +25,19 @@ out/
 *.sqlite3
 backend/dev.db
 backend/dev.db-journal
+dev.db
+dev.sqbpro
 
-# IDEs
-.vscode/
+# IDEs y editores
+.vscode/*
+!.vscode/extensions.json
 .idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 *.swp
 *.swo
 

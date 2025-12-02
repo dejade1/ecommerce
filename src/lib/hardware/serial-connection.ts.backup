@@ -1,0 +1,155 @@
+export class SerialConnection {
+  private port: SerialPort | null = null;
+  private writer: WritableStreamDefaultWriter | null = null;
+  private reader: ReadableStreamDefaultReader<string> | null = null;
+  private readonly BAUD_RATE = 9600;
+  private keepAliveInterval: number | null = null;
+  private readingActive = false;
+
+  async connect(): Promise<boolean> {
+    try {
+      if (!navigator.serial) {
+        console.error('Web Serial API no está disponible en este navegador');
+        return false;
+      }
+
+      this.port = await navigator.serial.requestPort({});
+
+      await this.port.open({
+        baudRate: this.BAUD_RATE,
+        dataBits: 8,
+        stopBits: 1,
+        parity: 'none',
+        flowControl: 'none'
+      });
+
+      this.writer = this.port.writable.getWriter();
+      this.reader = this.port.readable
+        .pipeThrough(new TextDecoderStream())
+        .getReader();
+
+      console.log('Conectado al Arduino en puerto serial');
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      this.keepAlive();
+      this.startReading();
+
+      return true;
+    } catch (error) {
+      console.error('Error conectando al Arduino:', error);
+      return false;
+    }
+  }
+
+  private startReading() {
+    if (this.readingActive) return;
+    this.readingActive = true;
+    this.readResponses();
+  }
+
+  private async readResponses() {
+    if (!this.reader) return;
+
+    try {
+      let buffer = '';
+      while (true) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        if (value) {
+          buffer += value;
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed && trimmed !== 'pong') {
+              console.log('Arduino responde:', trimmed);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error leyendo respuestas:', error);
+      this.readingActive = false;
+    }
+  }
+
+  private async keepAlive() {
+    this.keepAliveInterval = window.setInterval(async () => {
+      if (this.writer) {
+        try {
+          const encoder = new TextEncoder();
+          await this.writer.write(encoder.encode("ping\n"));
+        } catch (error) {
+          console.error('Error en keepAlive:', error);
+          this.reconnect();
+        }
+      }
+    }, 5000);
+  }
+
+  private async reconnect() {
+    await this.disconnect();
+    await this.connect();
+  }
+
+  async sendCommand(productId: number, quantity: number): Promise<boolean> {
+    if (!this.writer) {
+      console.error('No hay conexión serial activa');
+      return false;
+    }
+
+    try {
+      if (productId !== 1 && productId !== 2) {
+        return true;
+      }
+
+      const command = `${productId},${quantity}\n`;
+      console.log('Enviando comando al Arduino:', command.trim());
+      const encoder = new TextEncoder();
+      await this.writer.write(encoder.encode(command));
+
+      return true;
+    } catch (error) {
+      console.error('Error enviando comando:', error);
+      await this.reconnect();
+      return false;
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      if (this.keepAliveInterval) {
+        window.clearInterval(this.keepAliveInterval);
+        this.keepAliveInterval = null;
+      }
+
+      if (this.reader) {
+        await this.reader.cancel();
+        this.reader.releaseLock();
+        this.reader = null;
+      }
+
+      if (this.writer) {
+        this.writer.releaseLock();
+        this.writer = null;
+      }
+
+      if (this.port) {
+        await this.port.close();
+        this.port = null;
+      }
+
+      this.readingActive = false;
+    } catch (error) {
+      console.error('Error al desconectar:', error);
+    }
+  }
+
+  isSupported(): boolean {
+    return 'serial' in navigator;
+  }
+}
+
+export const serialConnection = new SerialConnection();
