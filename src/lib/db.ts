@@ -16,6 +16,7 @@ export interface Product {
   title: string;
   price: number;
   stock: number;
+  initialStock?: number; // NUEVO: Stock inicial de referencia
   unit: string;
   image: string;
   rating: number;
@@ -59,6 +60,18 @@ export interface StockMovement {
   createdAt: Date;
 }
 
+export interface StockAdjustment {
+  id?: number;
+  productId: number;
+  adjustmentType: 'manual' | 'restock' | 'correction' | 'damage' | 'count';
+  quantityBefore: number;
+  quantityAfter: number;
+  difference: number;
+  note?: string;
+  userId?: string;
+  timestamp: Date;
+}
+
 // Clase Dexie personalizada
 class StoreDB extends Dexie {
   products!: Table<Product, number>;
@@ -66,16 +79,38 @@ class StoreDB extends Dexie {
   orderItems!: Table<OrderItem, number>;
   batches!: Table<Batch, number>;
   stockMovements!: Table<StockMovement, number>;
+  stockAdjustments!: Table<StockAdjustment, number>;
 
   constructor() {
     super('storeDB');
 
+    // Versión 1 - Schema original
     this.version(1).stores({
       products: '++id, title, stock, category',
       orders: '++id, createdAt, status',
       orderItems: '++id, orderId, productId',
       batches: '++id, productId, expiryDate, batchCode',
       stockMovements: '++id, productId, createdAt, type'
+    });
+
+    // Versión 2 - Agregar initialStock y tabla stockAdjustments
+    this.version(2).stores({
+      products: '++id, title, stock, category, initialStock',
+      orders: '++id, createdAt, status',
+      orderItems: '++id, orderId, productId',
+      batches: '++id, productId, expiryDate, batchCode',
+      stockMovements: '++id, productId, createdAt, type',
+      stockAdjustments: '++id, productId, timestamp, adjustmentType'
+    }).upgrade(async tx => {
+      // Migración: Inicializar initialStock = stock actual para productos existentes
+      console.log('🔄 Migrando base de datos a versión 2...');
+      await tx.table('products').toCollection().modify(product => {
+        if (product.initialStock === undefined) {
+          product.initialStock = product.stock;
+          console.log(`✅ Producto "${product.title}": initialStock = ${product.stock}`);
+        }
+      });
+      console.log('✅ Migración completada');
     });
   }
 

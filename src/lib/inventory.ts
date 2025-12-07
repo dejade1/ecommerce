@@ -20,10 +20,12 @@ export interface Product {
   title: string;
   price: number;
   stock: number;
+  initialStock?: number; // Stock inicial de referencia
   unit: string;
   image: string;
   rating: number;
   category: string;
+  sales?: number; // Ventas acumuladas (se resetea al actualizar stock)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,17 +54,53 @@ export async function getAllProducts(): Promise<Product[]> {
 }
 
 /**
- * Actualiza el stock de un producto
+ * Actualiza el stock de un producto de forma incremental
  * @param productId ID del producto
- * @param newStock Nuevo valor de stock
+ * @param quantity Cantidad a agregar o quitar
+ * @param type 'in' para entrada, 'out' para salida
+ * @param note Nota opcional del movimiento
  */
-export async function updateStock(productId: number, newStock: number): Promise<void> {
+export async function updateStock(
+  productId: number,
+  quantity: number,
+  type: 'in' | 'out',
+  note?: string
+): Promise<void> {
   await db.ensureInitialized();
+
   const product = await db.products.get(productId);
   if (!product) {
     throw new AppError(`Producto ${productId} no encontrado`, ErrorCode.NOT_FOUND);
   }
-  await db.products.update(productId, { stock: newStock, updatedAt: new Date() });
+
+  // Calcular nuevo stock
+  const newStock = type === 'in'
+    ? product.stock + quantity
+    : product.stock - quantity;
+
+  if (newStock < 0) {
+    throw new AppError(
+      `Stock insuficiente. Disponible: ${product.stock}, solicitado: ${quantity}`,
+      ErrorCode.VALIDATION_ERROR
+    );
+  }
+
+  // Actualizar stock del producto
+  await db.products.update(productId, {
+    stock: newStock,
+    updatedAt: new Date()
+  });
+
+  // Registrar movimiento de stock
+  await db.stockMovements.add({
+    productId,
+    quantity: type === 'in' ? quantity : -quantity,
+    type,
+    note,
+    createdAt: new Date()
+  });
+
+  console.log(`[Stock] ${type === 'in' ? 'Entrada' : 'Salida'} - Producto ${productId}: ${quantity} unidades. Stock nuevo: ${newStock}`);
 }
 
 /**
@@ -101,7 +139,7 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
       items: items // Guardamos snapshot de items
     });
 
-    // 3. Procesar cada item (consumir lotes)
+    // 3. Procesar cada item (consumir lotes y actualizar ventas)
     for (const item of items) {
       // Registrar item de orden
       await db.orderItems.add({
@@ -113,6 +151,16 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
       // Esta función ya maneja su propia lógica, pero al estar dentro
       // de la transacción padre, se une a ella.
       await consumeBatchesFIFO(item.productId, item.quantity);
+
+      // Incrementar contador de ventas del producto
+      const product = await db.products.get(item.productId);
+      if (product) {
+        const currentSales = product.sales || 0;
+        await db.products.update(item.productId, {
+          sales: currentSales + item.quantity,
+          updatedAt: new Date()
+        });
+      }
     }
 
     console.log(`[Order] Orden #${orderId} creada exitosamente`);

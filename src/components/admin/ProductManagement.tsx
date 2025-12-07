@@ -14,7 +14,8 @@ export function ProductManagement() {
     stock: '',
     unit: '',
     image: '',
-    rating: '5.0'
+    rating: '5.0',
+    category: ''
   });
 
   useEffect(() => {
@@ -40,13 +41,17 @@ export function ProductManagement() {
     setSuccess('');
 
     try {
-      const productData = {
+      const stockValue = parseInt(newProduct.stock);
+      const productData: Product = {
         title: newProduct.title.trim(),
         price: parseFloat(newProduct.price),
-        stock: parseInt(newProduct.stock),
+        stock: stockValue,
+        initialStock: stockValue, // NUEVO: Establecer stock inicial igual al stock
         unit: newProduct.unit,
         image: newProduct.image.trim(),
         rating: parseFloat(newProduct.rating),
+        category: newProduct.category || 'General',
+        sales: 0, // Inicializar ventas en 0
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -71,19 +76,40 @@ export function ProductManagement() {
         return;
       }
 
-      const productId = await db.add('products', productData);
-      setSuccess(`Producto "${productData.title}" agregado correctamente`);
+      const productId = await db.products.add(productData);
+
+      // Si el producto tiene stock inicial, crear un lote inicial
+      if (productData.stock > 0) {
+        const expiryDate = new Date();
+        expiryDate.setMonth(expiryDate.getMonth() + 6); // 6 meses de vigencia por defecto
+
+        const batchCode = `INIT-${productId}-${Date.now()}`;
+
+        await db.batches.add({
+          productId: productId as number,
+          batchCode: batchCode,
+          quantity: productData.stock,
+          expiryDate: expiryDate.toISOString().split('T')[0],
+          createdAt: new Date().toISOString()
+        });
+
+        console.log(`[Product] Lote inicial creado para producto ${productId}: ${productData.stock} unidades`);
+      }
+
+      setSuccess(`Producto "${productData.title}" agregado correctamente (ID: ${productId})`);
       setNewProduct({
         title: '',
         price: '',
         stock: '',
         unit: '',
         image: '',
-        rating: '5.0'
+        rating: '5.0',
+        category: ''
       });
       await loadProducts();
     } catch (error) {
-      setError('Error al agregar el producto');
+      console.error('Error al agregar producto:', error);
+      setError(error instanceof Error ? error.message : 'Error al agregar el producto');
     }
   };
 
@@ -195,6 +221,32 @@ export function ProductManagement() {
                   />
                 </div>
 
+                <div className="col-span-6 sm:col-span-3">
+                  <label htmlFor="category" className="block text-sm font-medium text-gray-700">
+                    Categoría
+                  </label>
+                  <select
+                    id="category"
+                    value={newProduct.category}
+                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                  >
+                    <option value="">Seleccionar categoría</option>
+                    <option value="Granos">Granos</option>
+                    <option value="Aceites">Aceites</option>
+                    <option value="Lácteos">Lácteos</option>
+                    <option value="Carnes">Carnes</option>
+                    <option value="Frutas">Frutas</option>
+                    <option value="Verduras">Verduras</option>
+                    <option value="Bebidas">Bebidas</option>
+                    <option value="Panadería">Panadería</option>
+                    <option value="Snacks">Snacks</option>
+                    <option value="Condimentos">Condimentos</option>
+                    <option value="Limpieza">Limpieza</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+
                 <div className="col-span-6">
                   <label htmlFor="image" className="block text-sm font-medium text-gray-700">
                     URL de la Imagen
@@ -286,6 +338,9 @@ export function ProductManagement() {
                             Unidad
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Categoría
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Calificación
                           </th>
                         </tr>
@@ -311,6 +366,11 @@ export function ProductManagement() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {product.unit}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                {product.category || 'General'}
+                              </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {product.rating.toFixed(1)}

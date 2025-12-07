@@ -8,6 +8,7 @@ import {
   updateBatchQuantity,
   Batch
 } from '../../lib/batch-service';
+import { registerStockAdjustment } from '../../lib/stock-adjustment-service';
 
 export function InventoryManager() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -60,7 +61,7 @@ export function InventoryManager() {
           setLotesDisponibles(batches.filter(b => b.quantity > 0));
         });
     }
-    if (formData.type === 'in') setSelectedLote('');
+    if (formData.type === 'in') setSelectedLote(0);
     // Limpia lote seleccionado si cambia a entrada
   }, [formData.productId, formData.type, products]);
 
@@ -98,19 +99,52 @@ export function InventoryManager() {
     try {
       if (formData.type === 'in') {
         // Validar lote y caducidad
-        if (!batchCode || !expiryDate) {
-          setError('Debe ingresar lote y fecha de caducidad para entradas');
+        if (!batchCode || !batchCode.trim()) {
+          setError('Debe ingresar un código de lote para entradas');
           return;
         }
-        // 1. Añadir lote
+        if (!expiryDate || !expiryDate.trim()) {
+          setError('Debe ingresar una fecha de caducidad para entradas');
+          return;
+        }
+
+        // Obtener stock actual antes del ajuste
+        const product = await db.products.get(productId);
+        if (!product) {
+          setError('Producto no encontrado');
+          return;
+        }
+        const stockAntes = product.stock;
+
+        // 1. Añadir lote (esto ya actualiza el stock del producto automáticamente)
         await addBatch({
           productId,
           batchCode,
           quantity: formData.quantity,
           expiryDate
         });
-        // 2. Actualiza stock general
-        await updateStock(productId, formData.quantity, 'in', formData.note);
+
+        // 2. Registrar movimiento de stock para el historial (compatibilidad)
+        await db.stockMovements.add({
+          productId,
+          quantity: formData.quantity,
+          type: 'in',
+          note: formData.note,
+          createdAt: new Date()
+        });
+
+        // 3. Registrar en stockAdjustments con el nuevo stock
+        const nuevoStock = stockAntes + formData.quantity;
+        await db.stockAdjustments.add({
+          productId,
+          adjustmentType: 'restock',
+          quantityBefore: stockAntes,
+          quantityAfter: nuevoStock,
+          difference: formData.quantity,
+          note: formData.note || `Entrada de lote ${batchCode}`,
+          userId: localStorage.getItem('currentUser') || 'system',
+          timestamp: new Date()
+        });
       } else if (formData.type === 'out') {
         if (!selectedLote) {
           setError('Debe seleccionar un lote para salida');
@@ -122,20 +156,48 @@ export function InventoryManager() {
           setError('Cantidad de lote insuficiente');
           return;
         }
-        // 1. Descuenta del lote
+
+        // Obtener stock actual antes del ajuste
+        const product = await db.products.get(productId);
+        if (!product) {
+          setError('Producto no encontrado');
+          return;
+        }
+        const stockAntes = product.stock;
+
+        // 1. Descuenta del lote (esto ya actualiza el stock del producto automáticamente)
         await updateBatchQuantity(lote.id!, lote.quantity - formData.quantity);
-        // 2. Descuenta del producto general
-        await updateStock(productId, formData.quantity, 'out', formData.note);
+
+        // 2. Registrar movimiento de stock para el historial (compatibilidad)
+        await db.stockMovements.add({
+          productId,
+          quantity: -formData.quantity,
+          type: 'out',
+          note: formData.note,
+          createdAt: new Date()
+        });
+
+        // 3. Registrar en stockAdjustments con el nuevo stock
+        const nuevoStock = stockAntes - formData.quantity;
+        await db.stockAdjustments.add({
+          productId,
+          adjustmentType: 'manual',
+          quantityBefore: stockAntes,
+          quantityAfter: nuevoStock,
+          difference: -formData.quantity,
+          note: formData.note || `Salida de lote ${lote.batchCode}`,
+          userId: localStorage.getItem('currentUser') || 'system',
+          timestamp: new Date()
+        });
       }
 
       // Actualiza precio si cambió
       if (formData.newPrice) {
-        const product = await db.get('products', productId);
+        const product = await db.products.get(productId);
         if (product) {
           const newPrice = parseFloat(formData.newPrice);
           if (!isNaN(newPrice) && newPrice >= 0) {
-            await db.put('products', {
-              ...product,
+            await db.products.update(productId, {
               price: newPrice,
               updatedAt: new Date()
             });
@@ -143,8 +205,14 @@ export function InventoryManager() {
         }
       }
 
+      // Resetear ventas a 0 cuando se actualiza el stock
+      await db.products.update(productId, {
+        sales: 0,
+        updatedAt: new Date()
+      });
+
       await loadProducts();
-      setSuccess('Stock y lote actualizados correctamente');
+      setSuccess('Stock y lote actualizados correctamente. Ventas reseteadas a 0.');
       setFormData({
         productId: 0,
         quantity: 1,
@@ -192,7 +260,7 @@ export function InventoryManager() {
           </label>
           <select
             value={formData.productId}
-            onChange={(e) => handleProductSelect(e.target.value)}
+            onChange={(e) => handleProductSelect(Number(e.target.value))}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
           >
             <option value={0}>Seleccionar producto</option>
@@ -282,10 +350,10 @@ export function InventoryManager() {
             </label>
             <select
               value={selectedLote}
-              onChange={e => setSelectedLote(e.target.value)}
+              onChange={e => setSelectedLote(Number(e.target.value))}
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
             >
-              <option value="">Seleccionar lote</option>
+              <option value={0}>Seleccionar lote</option>
                 {lotesDisponibles.map(batch => (
                   <option key={batch.id} value={batch.id}>
                     {batch.batchCode} (Disp: {batch.quantity}, Vence: {batch.expiryDate})
