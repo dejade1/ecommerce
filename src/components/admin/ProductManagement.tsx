@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { getAllProducts, type Product } from '../../lib/inventory';
 import { db } from '../../lib/inventory';
+import { generateBatchCode } from '../../lib/batch-service';
 import { ProductEditModal } from './ProductEditModal';
 
 export function ProductManagement() {
@@ -32,7 +33,6 @@ export function ProductManagement() {
 
   async function migrateDatabase() {
     try {
-      // Verificar si los productos ya tienen los campos de banda
       const products = await db.products.toArray();
       let needsMigration = false;
       
@@ -140,7 +140,6 @@ export function ProductManagement() {
           return;
         }
         
-        // Verificar que el slot no esté ocupado
         const existingProduct = await db.products
           .where('slot')
           .equals(slotValue)
@@ -152,7 +151,6 @@ export function ProductManagement() {
         }
       }
 
-      // Validar distancia de banda
       if (beltDistanceValue !== undefined && beltDistanceValue < 0) {
         setError('La distancia de banda no puede ser negativa');
         return;
@@ -160,12 +158,13 @@ export function ProductManagement() {
 
       const productId = await db.products.add(productData);
 
-      // Si el producto tiene stock inicial, crear un lote inicial
+      // Si el producto tiene stock inicial, crear un lote inicial con código automático
       if (productData.stock > 0) {
         const expiryDate = new Date();
         expiryDate.setMonth(expiryDate.getMonth() + 6);
 
-        const batchCode = `INIT-${productId}-${Date.now()}`;
+        // Generar código automático: Prefijo-NumLote-Fecha
+        const batchCode = await generateBatchCode(productId as number, productData.title);
 
         await db.batches.add({
           productId: productId as number,
@@ -175,7 +174,7 @@ export function ProductManagement() {
           createdAt: new Date().toISOString()
         });
 
-        console.log(`[Product] Lote inicial creado para producto ${productId}: ${productData.stock} unidades`);
+        console.log(`[Product] Lote inicial creado: ${batchCode} (${productData.stock} unidades)`);
       }
 
       setSuccess(`Producto "${productData.title}" agregado correctamente (ID: ${productId})`);
@@ -376,7 +375,6 @@ export function ProductManagement() {
                   </label>
                   
                   <div className="space-y-3">
-                    {/* Opción 1: URL */}
                     <div>
                       <label className="text-xs text-gray-600">Pegar URL de imagen</label>
                       <input
@@ -391,7 +389,6 @@ export function ProductManagement() {
                       />
                     </div>
 
-                    {/* Opción 2: Subir archivo */}
                     <div>
                       <label className="text-xs text-gray-600">O subir desde computadora</label>
                       <div className="mt-1 flex items-center">
@@ -412,7 +409,6 @@ export function ProductManagement() {
                       <p className="mt-1 text-xs text-gray-500">PNG, JPG, GIF hasta 5MB</p>
                     </div>
 
-                    {/* Vista previa */}
                     {(imagePreview || newProduct.image) && (
                       <div className="mt-2">
                         <p className="text-xs text-gray-600 mb-1">Vista previa:</p>
@@ -556,7 +552,6 @@ export function ProductManagement() {
         </div>
       </div>
 
-      {/* Modal de edición */}
       {editingProduct && (
         <ProductEditModal
           product={editingProduct}

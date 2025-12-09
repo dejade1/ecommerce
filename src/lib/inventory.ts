@@ -1,15 +1,16 @@
 /**
- * ARCHIVO CORREGIDO: lib/inventory.ts
+ * ARCHIVO ACTUALIZADO: lib/inventory.ts
  * 
  * MEJORAS IMPLEMENTADAS:
  * 1. ✅ Integración con servicio de lotes transaccional
  * 2. ✅ Validación de stock antes de crear orden
  * 3. ✅ Tipos estrictos
  * 4. ✅ Manejo de errores centralizado
+ * 5. ✅ NUEVO: Generación automática de códigos de lote con formato correcto
  */
 
 import { db } from './db';
-import { consumeBatchesFIFO } from './batch-service'; // Usar la versión corregida
+import { consumeBatchesFIFO, generateBatchCode } from './batch-service';
 import { AppError, ErrorCode } from '../utils/errorHandler';
 
 // Re-export db for components that need direct access
@@ -20,12 +21,14 @@ export interface Product {
   title: string;
   price: number;
   stock: number;
-  initialStock?: number; // Stock inicial de referencia
+  initialStock?: number;
   unit: string;
   image: string;
   rating: number;
   category: string;
-  sales?: number; // Ventas acumuladas (se resetea al actualizar stock)
+  slot?: number;
+  beltDistance?: number;
+  sales?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,7 +37,7 @@ export interface OrderItem {
   productId: number;
   quantity: number;
   price: number;
-  productTitle: string; // Desnormalización útil para historial
+  productTitle: string;
 }
 
 export interface Order {
@@ -112,8 +115,6 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
     throw new AppError('La orden no puede estar vacía', ErrorCode.VALIDATION_ERROR);
   }
 
-  // Usamos una transacción global para toda la orden
-  // Si falla un producto, falla toda la orden
   return db.transaction('rw', [db.products, db.batches, db.orders, db.orderItems], async () => {
 
     // 1. Validar stock de TODOS los productos antes de tocar nada
@@ -136,7 +137,7 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
       total,
       status: 'completed',
       createdAt: new Date(),
-      items: items // Guardamos snapshot de items
+      items: items
     });
 
     // 3. Procesar cada item (consumir lotes y actualizar ventas)
@@ -148,8 +149,6 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
       });
 
       // Consumir inventario FIFO
-      // Esta función ya maneja su propia lógica, pero al estar dentro
-      // de la transacción padre, se une a ella.
       await consumeBatchesFIFO(item.productId, item.quantity);
 
       // Incrementar contador de ventas del producto
@@ -179,7 +178,7 @@ export async function initializeDB(): Promise<void> {
 
   const initialProducts: Product[] = [
     {
-      title: "Arroz Premium Extra Largo - 1kg",
+      title: "Arroz Premium Extra Largo",
       price: 2.99,
       stock: 50,
       unit: "kg",
@@ -190,7 +189,7 @@ export async function initializeDB(): Promise<void> {
       updatedAt: new Date()
     },
     {
-      title: "Aceite de Oliva Virgen Extra - 500ml",
+      title: "Aceite de Oliva Virgen Extra",
       price: 8.50,
       stock: 30,
       unit: "botella",
@@ -200,25 +199,27 @@ export async function initializeDB(): Promise<void> {
       createdAt: new Date(),
       updatedAt: new Date()
     },
-    // ... más productos
   ];
 
   await db.transaction('rw', [db.products, db.batches], async () => {
     for (const p of initialProducts) {
       const id = await db.products.add(p);
 
-      // Crear lote inicial para el stock base
-      // Asumimos vencimiento en 6 meses
+      // Crear lote inicial con código automático
       const expiry = new Date();
       expiry.setMonth(expiry.getMonth() + 6);
 
+      const batchCode = await generateBatchCode(id, p.title);
+
       await db.batches.add({
         productId: id,
-        batchCode: `INIT-${id}`,
+        batchCode,
         quantity: p.stock,
         expiryDate: expiry.toISOString().split('T')[0],
         createdAt: new Date().toISOString()
       });
+
+      console.log(`[Init] Producto "${p.title}" creado con lote ${batchCode}`);
     }
   });
 }

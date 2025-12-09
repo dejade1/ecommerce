@@ -1,5 +1,5 @@
 /**
- * ARCHIVO CORREGIDO: lib/batch-service.ts
+ * ARCHIVO ACTUALIZADO: lib/batch-service.ts
  * 
  * MEJORAS IMPLEMENTADAS:
  * 1. ✅ Transacciones atómicas para consistencia de datos
@@ -7,6 +7,7 @@
  * 3. ✅ Sincronización automática de stock de producto
  * 4. ✅ Manejo de errores detallado
  * 5. ✅ Validaciones de integridad
+ * 6. ✅ NUEVO: Generación automática de código de lote con formato: Prefijo-NumLote-FechaIngreso
  */
 
 import { db } from './db';
@@ -22,10 +23,90 @@ export interface Batch {
 }
 
 /**
+ * Genera un prefijo a partir del nombre del producto
+ * Toma las primeras 2 letras de cada palabra (hasta 4 palabras)
+ * Ejemplo: "Aceite de Oliva Virgen" -> "AcdeOlVi"
+ */
+function generateProductPrefix(productName: string): string {
+  const words = productName
+    .trim()
+    .split(/\s+/) // Dividir por espacios
+    .filter(w => w.length > 0)
+    .slice(0, 4); // Máximo 4 palabras
+  
+  return words
+    .map(word => {
+      // Tomar primeras 2 letras, capitalizar primera
+      const prefix = word.substring(0, 2);
+      return prefix.charAt(0).toUpperCase() + prefix.charAt(1).toLowerCase();
+    })
+    .join('');
+}
+
+/**
+ * Genera el número de lote secuencial para un producto
+ * Busca el último lote y suma 1
+ */
+async function getNextBatchNumber(productId: number): Promise<number> {
+  const batches = await db.batches
+    .where('productId')
+    .equals(productId)
+    .toArray();
+  
+  if (batches.length === 0) return 1;
+  
+  // Extraer números de lote de los códigos existentes
+  const batchNumbers = batches
+    .map(b => {
+      // Formato esperado: Prefijo-Num-Fecha
+      const parts = b.batchCode.split('-');
+      if (parts.length >= 2) {
+        const num = parseInt(parts[1]);
+        return isNaN(num) ? 0 : num;
+      }
+      return 0;
+    })
+    .filter(n => n > 0);
+  
+  if (batchNumbers.length === 0) return 1;
+  
+  return Math.max(...batchNumbers) + 1;
+}
+
+/**
+ * Genera la fecha en formato DDMMAAAA
+ * Ejemplo: 09122025 para 9 de diciembre de 2025
+ */
+function getFormattedDate(date: Date = new Date()): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}${month}${year}`;
+}
+
+/**
+ * Genera un código de lote automáticamente
+ * Formato: [PrefijoProd]-[NumLote]-[FechaIngreso]
+ * Ejemplo: "AcdeOlVi-1-09122025"
+ * 
+ * @param productId ID del producto
+ * @param productName Nombre del producto
+ * @returns Código de lote generado
+ */
+export async function generateBatchCode(productId: number, productName: string): Promise<string> {
+  const prefix = generateProductPrefix(productName);
+  const batchNumber = await getNextBatchNumber(productId);
+  const dateStr = getFormattedDate();
+  
+  return `${prefix}-${batchNumber}-${dateStr}`;
+}
+
+/**
  * Añade un nuevo lote y actualiza el stock del producto
  * Ejecutado dentro de una transacción
+ * Si no se proporciona batchCode, se genera automáticamente
  */
-export async function addBatch(batch: Batch): Promise<number> {
+export async function addBatch(batch: Omit<Batch, 'batchCode' | 'createdAt'> & { batchCode?: string }): Promise<number> {
   return db.transaction('rw', [db.products, db.batches], async () => {
     // 1. Validar producto
     const product = await db.products.get(batch.productId);
@@ -33,17 +114,23 @@ export async function addBatch(batch: Batch): Promise<number> {
       throw new AppError(`Producto ${batch.productId} no encontrado`, ErrorCode.NOT_FOUND);
     }
 
-    // 2. Insertar lote
+    // 2. Generar código de lote si no se proporcionó
+    const batchCode = batch.batchCode || await generateBatchCode(batch.productId, product.title);
+
+    // 3. Insertar lote
     const batchId = await db.batches.add({
-      ...batch,
+      productId: batch.productId,
+      batchCode,
+      quantity: batch.quantity,
+      expiryDate: batch.expiryDate,
       createdAt: new Date().toISOString()
     });
 
-    // 3. Actualizar stock total del producto
+    // 4. Actualizar stock total del producto
     const newStock = (product.stock || 0) + batch.quantity;
     await db.products.update(batch.productId, { stock: newStock });
 
-    console.log(`[Batch] Lote añadido. Nuevo stock para ${product.title}: ${newStock}`);
+    console.log(`[Batch] Lote añadido: ${batchCode}. Nuevo stock para ${product.title}: ${newStock}`);
     return batchId;
   });
 }
@@ -103,11 +190,8 @@ export async function consumeBatchesFIFO(
 
     // 4. Validar que se pudo cubrir la demanda
     if (remainingToConsume > 0) {
-      // Esto no debería pasar si product.stock era correcto, pero es una defensa extra
-      // Si pasa, significa que product.stock estaba desincronizado con sum(batches)
       console.warn(`[Inconsistency] Stock global dice ${product.stock} pero lotes suman menos.`);
-      // Forzamos actualización de stock real
-      const realStock = product.stock - quantityToConsume + remainingToConsume; // Lo que realmente había
+      const realStock = product.stock - quantityToConsume + remainingToConsume;
       await db.products.update(productId, { stock: realStock });
 
       throw new AppError(
