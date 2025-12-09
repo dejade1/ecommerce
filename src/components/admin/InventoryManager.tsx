@@ -52,7 +52,7 @@ export function InventoryManager() {
           .map(word => word.substr(0, 2))
           .join('')
           .substr(0, 8);
-        setBatchCode(prefijo + '-' + generateBatchCode(formData.productId, prod.title));
+        generateBatchCode(formData.productId, prod.title).then(code => setBatchCode(prefijo + '-' + code))(formData.productId, prod.title));
       }
     }
     // Cuando es salida, cargar lotes del producto seleccionado
