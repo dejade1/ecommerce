@@ -1,11 +1,12 @@
 /**
- * ARCHIVO CORREGIDO: lib/db.ts
+ * ARCHIVO ACTUALIZADO: lib/db.ts
  *
  * MEJORAS IMPLEMENTADAS:
  * 1. ✅ Usa Dexie.js para manejo simplificado de IndexedDB
  * 2. ✅ Auto-inicialización segura (previene race conditions)
  * 3. ✅ Tipado completo con TypeScript
  * 4. ✅ Transacciones atómicas
+ * 5. ✅ NUEVO: Campos slot y beltDistance para banda transportadora
  */
 
 import Dexie, { Table } from 'dexie';
@@ -16,11 +17,16 @@ export interface Product {
   title: string;
   price: number;
   stock: number;
-  initialStock?: number; // NUEVO: Stock inicial de referencia
+  initialStock?: number; // Stock inicial de referencia
   unit: string;
   image: string;
   rating: number;
   category: string;
+  
+  // NUEVOS CAMPOS BANDA TRANSPORTADORA
+  slot?: number;         // Número de banda física (1, 2, 3, etc.)
+  beltDistance?: number; // Distancia en cm para llegar a posición 0.00
+  
   createdAt: Date;
   updatedAt: Date;
 }
@@ -111,6 +117,26 @@ class StoreDB extends Dexie {
         }
       });
       console.log('✅ Migración completada');
+    });
+
+    // Versión 3 - Agregar campos de banda transportadora
+    this.version(3).stores({
+      products: '++id, title, stock, category, initialStock, slot',
+      orders: '++id, createdAt, status',
+      orderItems: '++id, orderId, productId',
+      batches: '++id, productId, expiryDate, batchCode',
+      stockMovements: '++id, productId, createdAt, type',
+      stockAdjustments: '++id, productId, timestamp, adjustmentType'
+    }).upgrade(async tx => {
+      console.log('🔄 Migrando base de datos a versión 3 (banda transportadora)...');
+      await tx.table('products').toCollection().modify(product => {
+        if (product.slot === undefined) {
+          product.slot = null;
+          product.beltDistance = null;
+          console.log(`✅ Producto "${product.title}": campos de banda inicializados`);
+        }
+      });
+      console.log('✅ Migración v3 completada');
     });
   }
 
