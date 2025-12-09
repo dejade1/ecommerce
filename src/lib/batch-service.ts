@@ -56,16 +56,26 @@ async function getNextBatchNumber(productId: number): Promise<number> {
   if (batches.length === 0) return 1;
   
   // Extraer números de lote de los códigos existentes
-  const batchNumbers = batches
+const batchNumbers = batches
     .map(b => {
-      // Formato esperado: Prefijo-Num-Fecha
+      // Formato esperado: Prefijo-Num-Fecha (ej: AcdeOlVi-1-09122025)
       const parts = b.batchCode.split('-');
-      if (parts.length >= 2) {
+      // Buscar el número que está entre el prefijo y la fecha
+      // Si tiene 3 partes: Prefijo, Num, Fecha -> parts[1] es el número
+      if (parts.length === 3) {
         const num = parseInt(parts[1]);
         return isNaN(num) ? 0 : num;
       }
       return 0;
     })
+    .filter(n => n > 0);
+
+  if (batchNumbers.length === 0) return 1;
+
+  return Math.max(...batchNumbers) + 1;
+}
+
+/**
     .filter(n => n > 0);
   
   if (batchNumbers.length === 0) return 1;
