@@ -24,7 +24,7 @@ export function ProductManagement() {
     slot: '',
     beltDistance: '',
     }
-  });
+  );
     const [expiryDate, setExpiryDate] = useState('');
       const [expiryDateError, setExpiryDateError] = useState('');
 
@@ -189,7 +189,7 @@ export function ProductManagement() {
         rating: '5.0',
         category: '',
         slot: '',
-        beltDistance: ''
+        beltDistance: '',
       });
       setImageFile(null);
       setImagePreview('');
