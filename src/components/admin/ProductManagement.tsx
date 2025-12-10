@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Search, Plus, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { getAllProducts, type Product } from '../../lib/inventory';
 import { db } from '../../lib/inventory';
-import { generateBatchCode, isValidExpiryDate, formatExpiryDate } from '../../lib/batchCodeGenerator';import { ProductEditModal } from './ProductEditModal';
+import { generateBatchCode, isValidExpiryDate, formatExpiryDate } from '../../lib/batchCodeGenerator';
+import { ProductEditModal } from './ProductEditModal';
 
 export function ProductManagement() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -23,10 +24,9 @@ export function ProductManagement() {
     category: '',
     slot: '',
     beltDistance: '',
-    }
-  );
-    const [expiryDate, setExpiryDate] = useState('');
-      const [expiryDateError, setExpiryDateError] = useState('');
+  });
+  const [expiryDate, setExpiryDate] = useState('');
+  const [expiryDateError, setExpiryDateError] = useState('');
 
   useEffect(() => {
     loadProducts();
@@ -162,8 +162,16 @@ export function ProductManagement() {
 
       // Si el producto tiene stock inicial, crear un lote inicial con código automático
       if (productData.stock > 0) {
-        const expiryDate = new Date();
-        expiryDate.setMonth(expiryDate.getMonth() + 6);
+        // Validar fecha de caducidad
+        if (!expiryDate) {
+          setError('Debe ingresar una fecha de caducidad para el lote inicial');
+          return;
+        }
+
+        if (!isValidExpiryDate(expiryDate)) {
+          setError('La fecha de caducidad debe ser futura');
+          return;
+        }
 
         // Generar código automático: Prefijo-NumLote-Fecha
         const batchCode = await generateBatchCode(productId as number, productData.title);
@@ -172,11 +180,11 @@ export function ProductManagement() {
           productId: productId as number,
           batchCode: batchCode,
           quantity: productData.stock,
-          expiryDate: expiryDate.toISOString().split('T')[0],
+          expiryDate: expiryDate,
           createdAt: new Date().toISOString()
         });
 
-        console.log(`[Product] Lote inicial creado: ${batchCode} (${productData.stock} unidades)`);
+        console.log(`[Product] Lote inicial creado: ${batchCode} (${productData.stock} unidades, vence: ${expiryDate})`);
       }
 
       setSuccess(`Producto "${productData.title}" agregado correctamente (ID: ${productId})`);
@@ -191,6 +199,8 @@ export function ProductManagement() {
         slot: '',
         beltDistance: '',
       });
+      setExpiryDate('');
+      setExpiryDateError('');
       setImageFile(null);
       setImagePreview('');
       await loadProducts();
@@ -279,6 +289,26 @@ export function ProductManagement() {
                     onChange={(e) => setNewProduct({ ...newProduct, stock: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
                   />
+                </div>
+
+                <div className="col-span-6 sm:col-span-3">
+                  <label htmlFor="expiryDate" className="block text-sm font-medium text-gray-700">
+                    Fecha de Caducidad Primer Lote *
+                  </label>
+                  <input
+                    type="date"
+                    id="expiryDate"
+                    value={expiryDate}
+                    onChange={(e) => {
+                      setExpiryDate(e.target.value);
+                      setExpiryDateError('');
+                    }}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                  />
+                  {expiryDateError && (
+                    <p className="mt-1 text-sm text-red-600">{expiryDateError}</p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500">Requerido si el stock inicial es mayor a 0</p>
                 </div>
 
                 <div className="col-span-6 sm:col-span-3">
