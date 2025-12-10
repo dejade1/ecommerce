@@ -22,7 +22,7 @@ export function ProductManagement() {
     rating: '5.0',
     category: '',
     slot: '',
-    beltDistance: ''
+    beltDistance: '',
     }
   });
     const [expiryDate, setExpiryDate] = useState('');
