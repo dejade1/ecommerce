@@ -53,7 +53,10 @@ export interface Batch {
   productId: number;
   batchCode: string;
   quantity: number;
-  expiryDate: string; // YYYY-MM-DD
+  expiryDate: Date; // YYYY-MM-DD
+    entryDate: Date;
+    createdAt: Date;
+    updatedAt: Date;
   createdAt: string;
 }
 
