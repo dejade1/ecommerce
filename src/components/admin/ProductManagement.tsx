@@ -23,6 +23,7 @@ export function ProductManagement() {
     category: '',
     slot: '',
     beltDistance: ''
+        }});
       const [expiryDate, setExpiryDate] = useState('');
       const [expiryDateError, setExpiryDateError] = useState('');
   });
