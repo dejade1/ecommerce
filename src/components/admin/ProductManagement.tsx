@@ -173,8 +173,14 @@ export function ProductManagement() {
           return;
         }
 
+        // Obtener lotes existentes del producto para generar el número de lote
+        const existingBatches = await db.batches
+          .where('productId')
+          .equals(productId as number)
+          .toArray();
+
         // Generar código automático: Prefijo-NumLote-Fecha
-        const batchCode = await generateBatchCode(productId as number, productData.title);
+        const batchCode = generateBatchCode(productData.title, existingBatches, new Date());
 
         await db.batches.add({
           productId: productId as number,
