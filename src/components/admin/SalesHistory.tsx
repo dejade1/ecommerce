@@ -15,7 +15,7 @@ interface StockMovement {
 }
 
 interface SaleDetail extends Order {
-  items: (OrderItem & { product: Product })[];
+  items: (OrderItem & { product: Product | undefined })[];
 }
 
 interface Transaction {
@@ -26,7 +26,7 @@ interface Transaction {
   productName?: string;
   quantity?: number;
   note?: string;
-  items?: (OrderItem & { product: Product })[];
+  items?: (OrderItem & { product: Product | undefined })[];
 }
 
 export function SalesHistory() {
@@ -61,7 +61,7 @@ export function SalesHistory() {
           .filter(item => item.orderId === order.id)
           .map(item => ({
             ...item,
-            product: productsData.find(p => p.id === item.productId)!
+            product: productsData.find(p => p.id === item.productId)
           }));
 
         allTransactions.push({
@@ -379,26 +379,38 @@ export function SalesHistory() {
                       <div className="bg-gray-50 rounded-md p-3">
                         <p className="text-xs font-medium text-gray-700 mb-2">Productos:</p>
                         <div className="space-y-2">
-                          {transaction.items.map((item) => (
-                            <div key={item.id} className="flex justify-between items-center text-sm">
-                              <div className="flex items-center">
-                                <img
-                                  src={item.product.image}
-                                  alt={item.product.title}
-                                  className="h-6 w-6 rounded-full object-cover mr-2"
-                                />
-                                <span className="text-gray-900">{item.product.title}</span>
+                          {transaction.items.map((item) => {
+                            const product = item.product;
+                            const productTitle = product?.title || 'Producto eliminado';
+                            const productImage = product?.image || 'https://via.placeholder.com/40?text=N/A';
+                            
+                            return (
+                              <div key={item.id} className="flex justify-between items-center text-sm">
+                                <div className="flex items-center">
+                                  <img
+                                    src={productImage}
+                                    alt={productTitle}
+                                    className="h-6 w-6 rounded-full object-cover mr-2"
+                                    onError={(e) => {
+                                      const target = e.target as HTMLImageElement;
+                                      target.src = 'https://via.placeholder.com/40?text=N/A';
+                                    }}
+                                  />
+                                  <span className={`${product ? 'text-gray-900' : 'text-gray-500 italic'}`}>
+                                    {productTitle}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  <span className="text-gray-500">
+                                    {item.quantity} × ${item.price.toFixed(2)}
+                                  </span>
+                                  <span className="font-medium text-gray-900">
+                                    ${(item.quantity * item.price).toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center space-x-3">
-                                <span className="text-gray-500">
-                                  {item.quantity} × ${item.price.toFixed(2)}
-                                </span>
-                                <span className="font-medium text-gray-900">
-                                  ${(item.quantity * item.price).toFixed(2)}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
