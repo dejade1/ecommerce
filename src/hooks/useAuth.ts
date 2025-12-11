@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { authService, User, LoginCredentials } from '../services/authService';
+import { authService, User } from '../lib/auth-service';
 import { useErrorHandler } from '../utils/errorHandler';
+
+// Tipos locales que antes venían de services/authService
+export interface LoginCredentials {
+    username: string;
+    password: string;
+}
 
 export function useAuth() {
     const [user, setUser] = useState<User | null>(null);
@@ -34,9 +40,13 @@ export function useAuth() {
         // Refrescar token cada 14 minutos (antes de que expire el de 15 min)
         const interval = setInterval(async () => {
             try {
-                await authService.refreshToken();
+                // Nota: auth-service.ts no tiene refreshToken, se hace automáticamente con cookies
+                const currentUser = await authService.checkAuth();
+                if (!currentUser) {
+                    logout();
+                }
             } catch (error) {
-                console.error('Token refresh failed, logging out:', error);
+                console.error('Session check failed, logging out:', error);
                 logout();
             }
         }, 14 * 60 * 1000);
@@ -46,7 +56,7 @@ export function useAuth() {
 
     const loadUser = async () => {
         try {
-            const currentUser = await authService.getCurrentUser();
+            const currentUser = await authService.checkAuth();
             if (currentUser) {
                 setUser(currentUser);
                 setIsAuthenticated(true);
@@ -62,7 +72,7 @@ export function useAuth() {
 
     const login = useCallback(async (credentials: LoginCredentials) => {
         try {
-            const { user: loggedUser } = await authService.login(credentials);
+            const loggedUser = await authService.login(credentials.username, credentials.password);
             setUser(loggedUser);
             setIsAuthenticated(true);
             return loggedUser;
