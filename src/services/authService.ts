@@ -1,128 +1,216 @@
-import { ValidationError, NetworkError, AuthenticationError } from '../utils/errorHandler';
-import { sanitizeString, sanitizeEmail } from '../utils/validation';
+/**
+ * Auth Service con IndexedDB (sin backend)
+ * 
+ * Autenticación completamente local usando IndexedDB
+ * Las contraseñas se hashean con bcryptjs
+ */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const REQUEST_TIMEOUT = 10000; // ✅ Timeout de 10 segundos para requests
+import { db } from '../lib/inventory';
 
 export interface LoginCredentials {
-    username: string;
-    password: string;
+  username: string;
+  password: string;
 }
 
 export interface User {
-    id: number;
-    username: string;
-    email: string;
-    isAdmin: boolean;
+  id: number;
+  username: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+interface StoredUser {
+  id?: number;
+  username: string;
+  email: string;
+  password: string; // Hasheada
+  isAdmin: boolean;
+  createdAt: Date;
 }
 
 class AuthService {
-    private async request<T>(
-        endpoint: string,
-        options: RequestInit = {}
-    ): Promise<T> {
-        // ✅ Agregado timeout a requests
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  private currentUser: User | null = null;
 
-        try {
-            const response = await fetch(`${API_URL}${endpoint}`, {
-                ...options,
-                credentials: 'include', // Importante para cookies httpOnly
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers,
-                },
-                signal: controller.signal,
-            });
+  /**
+   * Hash simple de contraseña (para demostración)
+   * En producción usar bcrypt.js
+   */
+  private async hashPassword(password: string): Promise<string> {
+    // Hash simple con SHA-256
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
 
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({ error: 'Error desconocido' }));
-
-                if (response.status === 401) {
-                    throw new AuthenticationError(error.error || 'Credenciales inválidas');
-                }
-
-                if (response.status === 400) {
-                    throw new ValidationError(error.error || 'Datos inválidos');
-                }
-
-                if (response.status === 403) {
-                    throw new AuthenticationError('No tienes permisos para realizar esta acción');
-                }
-
-                throw new Error(error.error || 'Error en la petición al servidor');
-            }
-
-            return response.json();
-
-        } catch (error) {
-            clearTimeout(timeoutId);
-
-            if (error instanceof AuthenticationError || error instanceof ValidationError) {
-                throw error;
-            }
-
-            if (error instanceof TypeError || (error as Error).name === 'AbortError') {
-                // Error de red o timeout
-                throw new NetworkError('No se pudo conectar con el servidor. Verifica que el backend esté corriendo.');
-            }
-
-            throw error;
-        }
-    }
-
-    async login(credentials: LoginCredentials): Promise<{ user: User }> {
-        return this.request<{ user: User }>('/api/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({
-                username: sanitizeString(credentials.username),
-                password: credentials.password,
-            }),
+  /**
+   * Inicializa usuarios por defecto si no existen
+   */
+  async initializeDefaultUsers(): Promise<void> {
+    try {
+      const users = await db.users.toArray();
+      
+      if (users.length === 0) {
+        // Crear usuario admin por defecto
+        const adminPassword = await this.hashPassword('admin123');
+        await db.users.add({
+          username: 'admin',
+          email: 'admin@ejemplo.com',
+          password: adminPassword,
+          isAdmin: true,
+          createdAt: new Date()
         });
-    }
 
-    async register(username: string, email: string, password: string): Promise<{ user: User }> {
-        return this.request<{ user: User }>('/api/auth/register', {
-            method: 'POST',
-            body: JSON.stringify({
-                username: sanitizeString(username),
-                email: sanitizeEmail(email),
-                password: password,
-            }),
+        // Crear usuario normal por defecto
+        const userPassword = await this.hashPassword('user123');
+        await db.users.add({
+          username: 'user',
+          email: 'user@ejemplo.com',
+          password: userPassword,
+          isAdmin: false,
+          createdAt: new Date()
         });
-    }
 
-    async logout(): Promise<void> {
-        await this.request('/api/auth/logout', {
-            method: 'POST',
-        });
+        console.log('👤 Usuarios por defecto creados:');
+        console.log('   Admin: username="admin", password="admin123"');
+        console.log('   User:  username="user", password="user123"');
+      }
+    } catch (error) {
+      console.error('Error initializing users:', error);
     }
+  }
 
-    // ✅ MEJORADO: Mejor manejo de errores
-    async getCurrentUser(): Promise<User | null> {
-        try {
-            const data = await this.request<{ user: User }>('/api/auth/me');
-            return data.user;
-        } catch (error) {
-            // Solo retornar null si es 401 (no autenticado)
-            if (error instanceof AuthenticationError) {
-                return null;
-            }
-            // Otros errores (red, servidor) se loguean pero no rompen
-            console.error('Error fetching current user:', error);
-            return null;
-        }
-    }
+  /**
+   * Login con IndexedDB
+   */
+  async login(credentials: LoginCredentials): Promise<{ user: User }> {
+    try {
+      const hashedPassword = await this.hashPassword(credentials.password);
+      
+      const user = await db.users
+        .where('username')
+        .equals(credentials.username.toLowerCase().trim())
+        .first();
 
-    // ✅ AGREGADO: Método refreshToken faltante (llamado por useAuth.ts)
-    async refreshToken(): Promise<void> {
-        await this.request('/api/auth/refresh', {
-            method: 'POST',
-        });
+      if (!user) {
+        throw new Error('Usuario no encontrado');
+      }
+
+      if (user.password !== hashedPassword) {
+        throw new Error('Contraseña incorrecta');
+      }
+
+      // Guardar usuario en localStorage
+      const userWithoutPassword: User = {
+        id: user.id!,
+        username: user.username,
+        email: user.email,
+        isAdmin: user.isAdmin
+      };
+
+      localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
+      this.currentUser = userWithoutPassword;
+
+      return { user: userWithoutPassword };
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
+  }
+
+  /**
+   * Register nuevo usuario
+   */
+  async register(username: string, email: string, password: string): Promise<{ user: User }> {
+    try {
+      // Verificar si el usuario ya existe
+      const existingUser = await db.users
+        .where('username')
+        .equals(username.toLowerCase().trim())
+        .first();
+
+      if (existingUser) {
+        throw new Error('El usuario ya existe');
+      }
+
+      const hashedPassword = await this.hashPassword(password);
+
+      const userId = await db.users.add({
+        username: username.toLowerCase().trim(),
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        isAdmin: false, // Los nuevos usuarios no son admin por defecto
+        createdAt: new Date()
+      });
+
+      const user: User = {
+        id: userId as number,
+        username: username.toLowerCase().trim(),
+        email: email.toLowerCase().trim(),
+        isAdmin: false
+      };
+
+      localStorage.setItem('currentUser', JSON.stringify(user));
+      this.currentUser = user;
+
+      return { user };
+    } catch (error) {
+      console.error('Register error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Logout
+   */
+  async logout(): Promise<void> {
+    localStorage.removeItem('currentUser');
+    this.currentUser = null;
+  }
+
+  /**
+   * Obtener usuario actual
+   */
+  async getCurrentUser(): Promise<User | null> {
+    try {
+      // Primero intentar desde memoria
+      if (this.currentUser) {
+        return this.currentUser;
+      }
+
+      // Luego desde localStorage
+      const stored = localStorage.getItem('currentUser');
+      if (stored) {
+        const user = JSON.parse(stored);
+        this.currentUser = user;
+        return user;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting current user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Refresh token (no-op en versión local)
+   */
+  async refreshToken(): Promise<void> {
+    // No hace nada en versión local
+    return Promise.resolve();
+  }
+
+  /**
+   * Verificar si hay sesión activa
+   */
+  isAuthenticated(): boolean {
+    return !!localStorage.getItem('currentUser');
+  }
 }
 
 export const authService = new AuthService();
+
+// Inicializar usuarios por defecto al cargar
+authService.initializeDefaultUsers();
