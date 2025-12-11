@@ -8,15 +8,21 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    hmr: true,
+    port: 5173,
+    strictPort: false,
+    hmr: {
+      protocol: 'ws',
+      host: 'localhost',
+      port: 5173,
+    },
     watch: {
-      usePolling: true, // Fuerza recompilación en cambios
+      usePolling: true,
+      interval: 100,
     },
   },
   build: {
     rollupOptions: {
       output: {
-        // Agrega hash único para forzar recarga
         entryFileNames: `assets/[name].[hash].js`,
         chunkFileNames: `assets/[name].[hash].js`,
         assetFileNames: `assets/[name].[hash].[ext]`
