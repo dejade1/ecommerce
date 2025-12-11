@@ -2,17 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Trash2, UserPlus, RefreshCw } from 'lucide-react';
 import { authService } from '../../lib/auth-service';
 
+// ✅ ACTUALIZADO: interface con role
 interface User {
   username: string;
   email: string;
-  isAdmin: boolean;
+  role: 'ADMIN' | 'USER' | 'CLIENT';
   id: string;
   createdAt?: string;
+  loyaltyPoints?: number;
 }
 
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', isAdmin: false });
+  const [newUser, setNewUser] = useState({ 
+    username: '', 
+    email: '', 
+    password: '', 
+    role: 'CLIENT' as 'ADMIN' | 'USER' | 'CLIENT' 
+  });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +31,6 @@ export function UserManagement() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      // Intentar cargar desde el backend
       const response = await fetch('http://localhost:3000/api/users', {
         method: 'GET',
         credentials: 'include',
@@ -38,22 +44,22 @@ export function UserManagement() {
         setUsers(backendUsers);
         console.log('[UserManagement] Usuarios cargados desde backend:', backendUsers.length);
       } else {
-        // Si falla el backend, cargar desde localStorage como fallback
         console.warn('[UserManagement] Backend no disponible, usando localStorage');
         const storedUsers = JSON.parse(localStorage.getItem('app_users') || '[]');
-        const usersWithIds = storedUsers.map((user: User) => ({
+        const usersWithIds = storedUsers.map((user: any) => ({
           ...user,
-          id: user.id || crypto.randomUUID()
+          id: user.id || crypto.randomUUID(),
+          role: user.role || (user.isAdmin ? 'ADMIN' : 'CLIENT') // Migrar isAdmin a role
         }));
         setUsers(usersWithIds);
       }
     } catch (error) {
       console.error('[UserManagement] Error al cargar usuarios:', error);
-      // Fallback a localStorage
       const storedUsers = JSON.parse(localStorage.getItem('app_users') || '[]');
-      const usersWithIds = storedUsers.map((user: User) => ({
+      const usersWithIds = storedUsers.map((user: any) => ({
         ...user,
-        id: user.id || crypto.randomUUID()
+        id: user.id || crypto.randomUUID(),
+        role: user.role || (user.isAdmin ? 'ADMIN' : 'CLIENT')
       }));
       setUsers(usersWithIds);
     } finally {
@@ -77,14 +83,31 @@ export function UserManagement() {
         return;
       }
 
-      // Intentar crear usuario en el backend
       try {
-        await authService.register(newUser.username, newUser.email, newUser.password, newUser.isAdmin);
-        setSuccess('Usuario creado exitosamente en el servidor');
+        // Enviar role al backend
+        const response = await fetch('http://localhost:3000/api/auth/register', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            username: newUser.username,
+            email: newUser.email,
+            password: newUser.password,
+            role: newUser.role // ✅ Enviar role
+          })
+        });
+
+        if (response.ok) {
+          setSuccess('Usuario creado exitosamente en el servidor');
+        } else {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Error al crear usuario');
+        }
       } catch (backendError) {
         console.warn('[UserManagement] Backend no disponible, usando localStorage');
 
-        // Fallback a localStorage
         const storedUsers = JSON.parse(localStorage.getItem('app_users') || '[]');
 
         if (storedUsers.some((u: User) => u.username === newUser.username)) {
@@ -97,17 +120,13 @@ export function UserManagement() {
           return;
         }
 
-        if (newUser.isAdmin && storedUsers.filter((u: User) => u.isAdmin).length >= 5) {
-          setError('Máximo número de administradores alcanzado (5)');
-          return;
-        }
-
         const newUserWithId = {
           username: newUser.username,
           email: newUser.email,
-          isAdmin: newUser.isAdmin,
+          role: newUser.role,
           id: crypto.randomUUID(),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          loyaltyPoints: 0
         };
 
         storedUsers.push(newUserWithId);
@@ -115,7 +134,7 @@ export function UserManagement() {
         setSuccess('Usuario creado exitosamente (modo local)');
       }
 
-      setNewUser({ username: '', email: '', password: '', isAdmin: false });
+      setNewUser({ username: '', email: '', password: '', role: 'CLIENT' });
       await loadUsers();
 
       setTimeout(() => {
@@ -134,7 +153,6 @@ export function UserManagement() {
     }
 
     try {
-      // Intentar eliminar del backend
       try {
         const response = await fetch(`http://localhost:3000/api/users/${userId}`, {
           method: 'DELETE',
@@ -152,7 +170,6 @@ export function UserManagement() {
       } catch (backendError) {
         console.warn('[UserManagement] Backend no disponible, usando localStorage');
 
-        // Fallback a localStorage
         const storedUsers = JSON.parse(localStorage.getItem('app_users') || '[]');
         const updatedUsers = storedUsers.filter((u: User) => u.id !== userId);
         localStorage.setItem('app_users', JSON.stringify(updatedUsers));
@@ -171,6 +188,34 @@ export function UserManagement() {
       setTimeout(() => {
         setError('');
       }, 3000);
+    }
+  };
+
+  // ✅ NUEVO: Función para obtener colores por rol
+  const getRoleBadgeClass = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'bg-purple-100 text-purple-800';
+      case 'USER':
+        return 'bg-orange-100 text-orange-800';
+      case 'CLIENT':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // ✅ NUEVO: Función para obtener nombre legible del rol
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'Administrador';
+      case 'USER':
+        return 'Usuario';
+      case 'CLIENT':
+        return 'Cliente';
+      default:
+        return role;
     }
   };
 
@@ -243,20 +288,27 @@ export function UserManagement() {
                   />
                 </div>
 
+                {/* ✅ NUEVO: Dropdown para rol */}
                 <div className="col-span-6 sm:col-span-4">
-                  <div className="flex items-center">
-                    <input
-                      id="isAdmin"
-                      name="isAdmin"
-                      type="checkbox"
-                      checked={newUser.isAdmin}
-                      onChange={(e) => setNewUser({ ...newUser, isAdmin: e.target.checked })}
-                      className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="isAdmin" className="ml-2 block text-sm text-gray-900">
-                      Usuario Administrador
-                    </label>
-                  </div>
+                  <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                    Tipo de Usuario
+                  </label>
+                  <select
+                    id="role"
+                    name="role"
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value as 'ADMIN' | 'USER' | 'CLIENT' })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                  >
+                    <option value="CLIENT">Cliente</option>
+                    <option value="USER">Usuario</option>
+                    <option value="ADMIN">Administrador</option>
+                  </select>
+                  <p className="mt-2 text-sm text-gray-500">
+                    <span className="font-medium">Administrador:</span> Acceso total al panel. 
+                    <span className="font-medium ml-2">Usuario:</span> Acceso total al panel. 
+                    <span className="font-medium ml-2">Cliente:</span> Solo compras.
+                  </p>
                 </div>
               </div>
               <div className="mt-5">
@@ -339,11 +391,9 @@ export function UserManagement() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                user.isAdmin
-                                  ? 'bg-purple-100 text-purple-800'
-                                  : 'bg-green-100 text-green-800'
+                                getRoleBadgeClass(user.role)
                               }`}>
-                                {user.isAdmin ? 'Administrador' : 'Usuario'}
+                                {getRoleLabel(user.role)}
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
