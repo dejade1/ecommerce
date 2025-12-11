@@ -3,18 +3,17 @@
  * Maneja la comunicación con el backend para login, registro y gestión de sesión.
  */
 
-// URL base del API (ajustar según entorno)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-// 🐞 DEBUG: Verificar que el archivo se carga
 console.log('🔥 auth-service.ts LOADED - API_URL:', API_URL);
 
-// Tipos
+// ✅ ACTUALIZADO: User con role
 export interface User {
     id: number;
     username: string;
     email: string;
-    isAdmin: boolean;
+    role: 'ADMIN' | 'USER' | 'CLIENT';
+    loyaltyPoints?: number;
 }
 
 export interface AuthResponse {
@@ -35,7 +34,7 @@ export const authService = {
             headers: {
                 'Content-Type': 'application/json',
             },
-            credentials: 'include', // ✅ IMPORTANTE: Envía cookies httpOnly
+            credentials: 'include',
             body: JSON.stringify({ username, password }),
         });
 
@@ -51,7 +50,7 @@ export const authService = {
     /**
      * Registrar nuevo usuario
      */
-    async register(username: string, email: string, password: string, isAdmin?: boolean): Promise<User> {
+    async register(username: string, email: string, password: string, role?: 'ADMIN' | 'USER' | 'CLIENT'): Promise<User> {
         const fullUrl = `${API_URL}/auth/register`;
         console.log('🔍 [REGISTER] Calling:', fullUrl);
         
@@ -60,8 +59,13 @@ export const authService = {
             headers: {
                 'Content-Type': 'application/json',
             },
-            credentials: 'include', // ✅ IMPORTANTE: Envía cookies httpOnly
-            body: JSON.stringify({ username, email, password, isAdmin: isAdmin || false }),
+            credentials: 'include',
+            body: JSON.stringify({ 
+                username, 
+                email, 
+                password, 
+                role: role || 'CLIENT' 
+            }),
         });
 
         if (!response.ok) {
@@ -82,7 +86,7 @@ export const authService = {
         
         const response = await fetch(fullUrl, {
             method: 'POST',
-            credentials: 'include', // ✅ IMPORTANTE: Envía cookies httpOnly
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -92,7 +96,6 @@ export const authService = {
 
     /**
      * Verificar estado de autenticación (Session Check)
-     * Útil para persistir sesión al recargar página
      */
     async checkAuth(): Promise<User | null> {
         try {
@@ -104,7 +107,7 @@ export const authService = {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include', // ✅ IMPORTANTE: Envía cookies httpOnly
+                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -119,7 +122,6 @@ export const authService = {
     },
 };
 
-// Force HMR
 if (import.meta.hot) {
     import.meta.hot.accept();
 }
