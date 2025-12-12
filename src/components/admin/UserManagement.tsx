@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, UserPlus, RefreshCw } from 'lucide-react';
+import { Trash2, UserPlus, RefreshCw, Users, Shield } from 'lucide-react';
 import { authService } from '../../lib/auth-service';
 
 // ✅ ACTUALIZADO: interface con role
@@ -12,8 +12,11 @@ interface User {
   loyaltyPoints?: number;
 }
 
+type RoleFilter = 'ALL' | 'CLIENTS' | 'STAFF';
+
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('ALL');
   const [newUser, setNewUser] = useState({ 
     username: '', 
     email: '', 
@@ -219,6 +222,18 @@ export function UserManagement() {
     }
   };
 
+  // ✅ NUEVO: Filtrar usuarios según el filtro seleccionado
+  const filteredUsers = users.filter(user => {
+    if (roleFilter === 'ALL') return true;
+    if (roleFilter === 'CLIENTS') return user.role === 'CLIENT';
+    if (roleFilter === 'STAFF') return user.role === 'ADMIN' || user.role === 'USER';
+    return true;
+  });
+
+  // Calcular estadísticas
+  const clientsCount = users.filter(u => u.role === 'CLIENT').length;
+  const staffCount = users.filter(u => u.role === 'ADMIN' || u.role === 'USER').length;
+
   return (
     <div className="space-y-6">
       <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
@@ -288,7 +303,7 @@ export function UserManagement() {
                   />
                 </div>
 
-                {/* ✅ NUEVO: Dropdown para rol */}
+                {/* ✅ Dropdown para rol */}
                 <div className="col-span-6 sm:col-span-4">
                   <label htmlFor="role" className="block text-sm font-medium text-gray-700">
                     Tipo de Usuario
@@ -327,18 +342,61 @@ export function UserManagement() {
 
       <div className="bg-white shadow sm:rounded-lg">
         <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">
-              Usuarios Registrados ({users.length})
-            </h3>
-            <button
-              onClick={loadUsers}
-              disabled={loading}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
+            <div>
+              <h3 className="text-lg leading-6 font-medium text-gray-900">
+                Usuarios Registrados ({filteredUsers.length})
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {clientsCount} clientes • {staffCount} personal
+              </p>
+            </div>
+            <div className="flex items-center space-x-3">
+              {/* ✅ NUEVO: Filtro de roles */}
+              <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setRoleFilter('ALL')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    roleFilter === 'ALL'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setRoleFilter('CLIENTS')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center space-x-1 ${
+                    roleFilter === 'CLIENTS'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  <span>Clientes</span>
+                </button>
+                <button
+                  onClick={() => setRoleFilter('STAFF')}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors flex items-center space-x-1 ${
+                    roleFilter === 'STAFF'
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Shield className="h-4 w-4" />
+                  <span>Personal</span>
+                </button>
+              </div>
+
+              <button
+                onClick={loadUsers}
+                disabled={loading}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Actualizar
+              </button>
+            </div>
           </div>
         </div>
 
@@ -347,12 +405,14 @@ export function UserManagement() {
             <div className="flex justify-center items-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-400"></div>
             </div>
-          ) : users.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8">
               <UserPlus className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">No hay usuarios</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Comienza creando un nuevo usuario.
+                {roleFilter === 'ALL' 
+                  ? 'Comienza creando un nuevo usuario.'
+                  : `No hay ${roleFilter === 'CLIENTS' ? 'clientes' : 'personal'} registrados.`}
               </p>
             </div>
           ) : (
@@ -373,6 +433,9 @@ export function UserManagement() {
                             Rol
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Puntos
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Fecha de Registro
                           </th>
                           <th scope="col" className="relative px-6 py-3">
@@ -381,7 +444,7 @@ export function UserManagement() {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {users.map((user) => (
+                        {filteredUsers.map((user) => (
                           <tr key={user.id}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                               {user.username}
@@ -395,6 +458,13 @@ export function UserManagement() {
                               }`}>
                                 {getRoleLabel(user.role)}
                               </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {user.role === 'CLIENT' ? (
+                                <span className="font-medium text-yellow-600">{user.loyaltyPoints || 0}</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {user.createdAt
