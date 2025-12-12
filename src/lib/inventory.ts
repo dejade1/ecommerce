@@ -115,7 +115,8 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
     throw new AppError('La orden no puede estar vacía', ErrorCode.VALIDATION_ERROR);
   }
 
-  return db.transaction('rw', [db.products, db.batches, db.orders, db.orderItems], async () => {
+  // PASO 1: Ejecutar transacción de IndexedDB (sin fetch)
+  const orderId = await db.transaction('rw', [db.products, db.batches, db.orders, db.orderItems], async () => {
 
     // 1. Validar stock de TODOS los productos antes de tocar nada
     for (const item of items) {
@@ -151,12 +152,14 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
       // Consumir inventario FIFO
       await consumeBatchesFIFO(item.productId, item.quantity);
 
-      // Incrementar contador de ventas del producto
+      // Incrementar contador de ventas del producto (solo en IndexedDB por ahora)
       const product = await db.products.get(item.productId);
       if (product) {
         const currentSales = product.sales || 0;
+        const newSales = currentSales + item.quantity;
+
         await db.products.update(item.productId, {
-          sales: currentSales + item.quantity,
+          sales: newSales,
           updatedAt: new Date()
         });
       }
@@ -165,61 +168,43 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
     console.log(`[Order] Orden #${orderId} creada exitosamente`);
     return orderId;
   });
+
+  // PASO 2: Sincronizar con el backend DESPUÉS de completar la transacción
+  for (const item of items) {
+    try {
+      const product = await db.products.get(item.productId);
+      if (product) {
+        // Una sola petición PATCH para actualizar tanto ventas como stock
+        await fetch(`http://localhost:3000/api/products/${item.productId}/sales`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sales: product.sales || 0,
+            stock: product.stock
+          })
+        });
+
+        console.log(`✅ Datos sincronizados al backend: ${product.title} - ${product.sales} ventas, ${product.stock} stock`);
+      }
+    } catch (error) {
+      console.error('⚠️ Error sincronizando al backend:', error);
+      // No lanzar error - la venta ya se registró localmente
+    }
+  }
+
+  return orderId;
 }
 
 /**
  * Inicializa la base de datos con datos de prueba si está vacía
+ * ⚠️ DESACTIVADO: Ahora los productos se agregan manualmente desde el panel admin
  */
 export async function initializeDB(): Promise<void> {
-  const count = await db.products.count();
-  if (count > 0) return;
+  console.log('✅ Base de datos lista (sin datos de prueba automáticos)');
 
-  console.log('Inicializando base de datos...');
-
-  const initialProducts: Product[] = [
-    {
-      title: "Arroz Premium Extra Largo",
-      price: 2.99,
-      stock: 50,
-      unit: "kg",
-      image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80",
-      rating: 4.8,
-      category: "Granos",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    },
-    {
-      title: "Aceite de Oliva Virgen Extra",
-      price: 8.50,
-      stock: 30,
-      unit: "botella",
-      image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=800&q=80",
-      rating: 4.9,
-      category: "Aceites",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    },
-  ];
-
-  await db.transaction('rw', [db.products, db.batches], async () => {
-    for (const p of initialProducts) {
-      const id = await db.products.add(p);
-
-      // Crear lote inicial con código automático
-      const expiry = new Date();
-      expiry.setMonth(expiry.getMonth() + 6);
-
-      const batchCode = await generateBatchCode(id, p.title);
-
-      await db.batches.add({
-        productId: id,
-        batchCode,
-        quantity: p.stock,
-        expiryDate: expiry.toISOString().split('T')[0],
-        createdAt: new Date().toISOString()
-      });
-
-      console.log(`[Init] Producto "${p.title}" creado con lote ${batchCode}`);
-    }
-  });
+  // Ya no se crean productos automáticamente
+  // Los productos se agregan manualmente desde el panel de administración
+  return;
 }

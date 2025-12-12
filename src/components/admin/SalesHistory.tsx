@@ -382,12 +382,19 @@ export function SalesHistory() {
                           {transaction.items.map((item) => (
                             <div key={item.id} className="flex justify-between items-center text-sm">
                               <div className="flex items-center">
-                                <img
-                                  src={item.product.image}
-                                  alt={item.product.title}
-                                  className="h-6 w-6 rounded-full object-cover mr-2"
-                                />
-                                <span className="text-gray-900">{item.product.title}</span>
+                                {item.product && (
+                                  <>
+                                    <img
+                                      src={item.product.image}
+                                      alt={item.product.title}
+                                      className="h-6 w-6 rounded-full object-cover mr-2"
+                                    />
+                                    <span className="text-gray-900">{item.product.title}</span>
+                                  </>
+                                )}
+                                {!item.product && (
+                                  <span className="text-gray-500">Producto no disponible</span>
+                                )}
                               </div>
                               <div className="flex items-center space-x-3">
                                 <span className="text-gray-500">

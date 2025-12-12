@@ -1,0 +1,14 @@
+{
+  "lowStockAlert": true,
+  "expiryAlert": true,
+  "alertThreshold": 2,
+  "adminEmails": [
+    "jmdelgado2001@gmail.com",
+    "jmdelgado2001@hotmail.com"
+  ],
+  "autoReportTime": "17:41",
+  "autoReportEnabled": true,
+  "esp32Enabled": false,
+  "esp32IpAddress": "",
+  "esp32Port": 80
+}

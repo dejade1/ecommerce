@@ -39,6 +39,8 @@ interface AppSettings {
   expiryAlert: boolean;
   alertThreshold: number;
   adminEmails: string[];
+  autoReportTime: string; // Hora de envío automático de reportes (formato HH:MM)
+  autoReportEnabled: boolean; // Habilitar envío automático
 
   // Hardware
   esp32Enabled: boolean;
@@ -61,6 +63,8 @@ export function Settings() {
     expiryAlert: true,
     alertThreshold: 2,
     adminEmails: [],
+    autoReportTime: '09:00', // 9:00 AM por defecto
+    autoReportEnabled: false,
     esp32Enabled: false,
     arduinoPort: 'COM3',
     ledDuration: 3000,
@@ -83,11 +87,31 @@ export function Settings() {
   const [sendingReport, setSendingReport] = useState<string | null>(null);
 
   useEffect(() => {
-    // Cargar configuración guardada
-    const savedSettings = localStorage.getItem('app_settings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
+    // Cargar configuración desde el backend
+    const loadSettings = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/api/admin/settings', {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.settings) {
+            setSettings(data.settings);
+            console.log('✅ Settings cargados desde el backend');
+          }
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        // Si falla, intentar cargar desde localStorage como fallback
+        const savedSettings = localStorage.getItem('app_settings');
+        if (savedSettings) {
+          setSettings(JSON.parse(savedSettings));
+        }
+      }
+    };
+
+    loadSettings();
   }, []);
 
   /**
@@ -98,11 +122,22 @@ export function Settings() {
     setSaveSuccess(false);
 
     try {
-      // Guardar en localStorage
+      // Guardar en localStorage como backup
       localStorage.setItem('app_settings', JSON.stringify(settings));
 
-      // Simular guardado en backend
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Guardar en backend
+      const response = await fetch('http://localhost:3000/api/admin/settings', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al guardar en el backend');
+      }
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -203,7 +238,7 @@ export function Settings() {
   /**
    * Envía un reporte CSV por email
    */
-  const handleSendCSVReport = async (reportType: 'most-sold' | 'negative-diff' | 'adjustments') => {
+  const handleSendCSVReport = async (reportType: 'most-sold' | 'negative-diff' | 'adjustments' | 'complete') => {
     if (settings.adminEmails.length === 0) {
       setEmailStatus({ type: 'error', message: 'Agregue al menos un email primero' });
       return;
@@ -516,7 +551,7 @@ export function Settings() {
                 )}
               </div>
 
-              {/* CSV Reports Section */}
+              {/* CSV Reports Section - UN SOLO BOTÓN */}
               {settings.adminEmails.length > 0 && (
                 <>
                   <hr className="my-6 border-gray-200" />
@@ -524,41 +559,76 @@ export function Settings() {
                     <div className="flex items-center gap-2 mb-4">
                       <FileText className="text-blue-600" size={20} />
                       <h4 className="text-md font-semibold text-gray-900">
-                        Reportes CSV por Email
+                        Reporte Completo por Email
+                      </h4>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-4">
+                      Enviar reporte completo en formato CSV con: ventas del día, stock actual/inicial, ingresos, productos con diferencias negativas y nuevos productos agregados.
+                    </p>
+
+                    <button
+                      onClick={() => handleSendCSVReport('complete')}
+                      disabled={sendingReport === 'complete'}
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium shadow-md"
+                    >
+                      <FileText size={20} />
+                      {sendingReport === 'complete' ? 'Enviando Reporte...' : 'Enviar Reporte Completo'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Automatic Report Scheduling */}
+              {settings.adminEmails.length > 0 && (
+                <>
+                  <hr className="my-6 border-gray-200" />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Bell className="text-blue-600" size={20} />
+                      <h4 className="text-md font-semibold text-gray-900">
+                        Envío Automático de Reportes
                       </h4>
                     </div>
                     <p className="text-sm text-gray-500">
-                      Enviar reportes en formato CSV a los {settings.adminEmails.length} email(s) configurado(s).
+                      Configura el envío automático diario de reportes por email.
                     </p>
 
-                    <div className="grid grid-cols-1 gap-3">
-                      <button
-                        onClick={() => handleSendCSVReport('most-sold')}
-                        disabled={sendingReport === 'most-sold'}
-                        className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <FileText size={18} />
-                        {sendingReport === 'most-sold' ? 'Enviando...' : 'Productos Más Vendidos'}
-                      </button>
-
-                      <button
-                        onClick={() => handleSendCSVReport('negative-diff')}
-                        disabled={sendingReport === 'negative-diff'}
-                        className="px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <FileText size={18} />
-                        {sendingReport === 'negative-diff' ? 'Enviando...' : 'Productos con Diferencias Negativas'}
-                      </button>
-
-                      <button
-                        onClick={() => handleSendCSVReport('adjustments')}
-                        disabled={sendingReport === 'adjustments'}
-                        className="px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        <FileText size={18} />
-                        {sendingReport === 'adjustments' ? 'Enviando...' : 'Historial de Ajustes del Último Día'}
-                      </button>
+                    {/* Enable/Disable toggle */}
+                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-gray-900">Activar Envío Automático</p>
+                        <p className="text-sm text-gray-500">
+                          Los reportes se enviarán automáticamente cada día
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.autoReportEnabled}
+                          onChange={(e) => updateSetting('autoReportEnabled', e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
                     </div>
+
+                    {/* Time picker */}
+                    {settings.autoReportEnabled && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Hora de Envío Diario
+                        </label>
+                        <input
+                          type="time"
+                          value={settings.autoReportTime}
+                          onChange={(e) => updateSetting('autoReportTime', e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="mt-2 text-sm text-gray-500">
+                          Los reportes se enviarán automáticamente a las <strong>{settings.autoReportTime}</strong> todos los días a los {settings.adminEmails.length} email(s) configurado(s).
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

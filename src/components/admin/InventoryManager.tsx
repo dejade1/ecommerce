@@ -53,7 +53,6 @@ export function InventoryManager() {
           .join('')
           .substr(0, 8);
        generateBatchCode(formData.productId, prod.title).then(code => setBatchCode(code));
-
       }
     }
     // Cuando es salida, cargar lotes del producto seleccionado

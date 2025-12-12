@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { initializeDB } from './lib/inventory';
+import './lib/clear-db'; // Función global para limpiar DB
 
 import { AuthProvider } from './context/AuthContext';
 

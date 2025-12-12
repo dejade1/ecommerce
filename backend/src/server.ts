@@ -1,8 +1,8 @@
 /**
  * ARCHIVO NUEVO: backend/server.ts
- * 
+ *
  * Servidor backend seguro con Node.js + Express
- * 
+ *
  * CARACTERÍSTICAS DE SEGURIDAD:
  * ✅ Autenticación JWT con httpOnly cookies
  * ✅ Hash de contraseñas con bcrypt
@@ -16,6 +16,9 @@
  * ✅ SQL injection prevention (con Prisma)
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -26,6 +29,8 @@ import cookieParser from 'cookie-parser';
 import { body, validationResult } from 'express-validator';
 import { PrismaClient } from '@prisma/client';
 import emailRoutes from './routes/emailRoutes';
+import productRoutes from './routes/productRoutes';
+import settingsRoutes from './routes/settingsRoutes';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -72,6 +77,7 @@ const JWT_SECRET = process.env.JWT_SECRET as string;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
 
 console.log('✅ JWT secrets validated successfully');
+console.log('📧 SMTP configured:', process.env.SMTP_HOST);
 
 const SALT_ROUNDS = 12;
 const ACCESS_TOKEN_EXPIRY = '15m';
@@ -641,12 +647,31 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthReq
     }
 });
 
+// ==================== PUBLIC ROUTES ====================
+
+/**
+ * Rutas públicas de productos (sin autenticación)
+ * Permite a la tienda obtener productos
+ */
+app.use('/api/products', productRoutes);
+
 // ==================== EMAIL & REPORTS ROUTES ====================
 
 /**
  * Rutas de email y reportes (solo admin)
  */
 app.use('/api/admin', authenticateToken, requireAdmin, emailRoutes);
+console.log('📧 Email routes registered at /api/admin');
+
+/**
+ * Rutas de productos de administración (solo admin)
+ */
+app.use('/api/admin', authenticateToken, requireAdmin, productRoutes);
+
+/**
+ * Rutas de settings/configuración (solo admin)
+ */
+app.use('/api/admin', authenticateToken, requireAdmin, settingsRoutes);
 
 // ==================== MANEJO DE ERRORES ====================
 
