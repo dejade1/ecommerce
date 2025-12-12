@@ -618,26 +618,27 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthReq
  * Rutas públicas de productos (sin autenticación)
  * Permite a la tienda obtener productos
  */
+// ==================== PUBLIC ROUTES ====================
+
+/**
+ * Rutas públicas de productos (sin autenticación)
+ */
 app.use('/api/products', productRoutes);
+console.log('📦 Public product routes registered at /api/products');
 
 // ==================== EMAIL & REPORTS ROUTES ====================
 
 /**
  * Rutas de email y reportes (solo admin)
  */
-app.use('/api/admin', authenticateToken, requireAdmin, emailRoutes);
-console.log('📧 Email routes registered at /api/admin');
-
-/**
- * Rutas de productos de administración (solo admin)
- */
-app.use('/api/admin', authenticateToken, requireAdmin, productRoutes);
+app.use('/api/admin/email', authenticateToken, requireAdmin, emailRoutes);
+console.log('📧 Email routes registered at /api/admin/email');
 
 /**
  * Rutas de settings/configuración (solo admin)
  */
-app.use('/api/admin', authenticateToken, requireAdmin, settingsRoutes);
-
+app.use('/api/admin/settings', authenticateToken, requireAdmin, settingsRoutes);
+console.log('⚙️  Settings routes registered at /api/admin/settings');
 // ==================== MANEJO DE ERRORES ====================
 
 // 404
