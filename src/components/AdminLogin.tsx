@@ -7,6 +7,7 @@
  * ✅ Validación centralizada
  * ✅ Bloqueo de rol CLIENT
  * ✅ Solo permite ADMIN y USER
+ * ✅ ELIMINADO: Opción de registro (solo login)
  */
 
 import { useState, useCallback } from 'react';
@@ -15,7 +16,6 @@ import { useAuth } from '../context/AuthContext';
 import { authService } from '../lib/auth-service';
 import {
   sanitizeString,
-  sanitizeEmail,
   validateFields,
   VALIDATION_RULES
 } from '../utils/validation';
@@ -26,9 +26,7 @@ interface AdminLoginProps {
 
 export function AdminLogin({ onClose }: AdminLoginProps) {
   // Estado
-  const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +65,7 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
       // Llamada al servicio de autenticación
       const user = await authService.login(cleanUsername, password);
 
-      // ✅ NUEVO: Bloquear clientes
+      // ✅ Bloquear clientes
       if (user.role === 'CLIENT') {
         throw new Error('Los clientes no tienen acceso al panel de administración. Por favor usa el botón "Cuenta" en la parte superior.');
       }
@@ -92,58 +90,6 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
     }
   }, [username, password, login, onClose]);
 
-  /**
-   * Maneja el registro
-   * Usuarios registrados aquí tendrán rol USER o ADMIN
-   */
-  const handleRegister = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-    setIsLoading(true);
-
-    try {
-      // Validación completa
-      const validation = validateFields([
-        { value: username, fieldName: 'Usuario', rules: ['required', 'username'] },
-        { value: email, fieldName: 'Email', rules: ['required', 'email'] },
-        { value: password, fieldName: 'Contraseña', rules: ['required', 'password'] }
-      ]);
-
-      if (!validation.isValid) {
-        throw new Error(validation.errors[0]);
-      }
-
-      // Sanitizar inputs
-      const cleanUsername = sanitizeString(username);
-      const cleanEmail = sanitizeEmail(email);
-
-      // Llamada al servicio de registro
-      await authService.register(cleanUsername, cleanEmail, password);
-
-      setSuccess('¡Registro exitoso! Ahora puedes iniciar sesión.');
-
-      // Limpiar formulario y cambiar a login
-      setUsername('');
-      setEmail('');
-      setPassword('');
-
-      setTimeout(() => {
-        setIsLogin(true);
-        setSuccess('');
-      }, 2000);
-
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Error al registrar usuario.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [username, email, password]);
-
   // ==================== RENDER ====================
 
   return (
@@ -163,11 +109,14 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
           <div className="flex items-center gap-2 mb-2">
             <Shield className="text-blue-600" size={28} />
             <h2 className="text-2xl font-bold text-gray-800">
-              {isLogin ? 'Acceso Administrativo' : 'Registro de Personal'}
+              Acceso Administrativo
             </h2>
           </div>
           <p className="text-sm text-gray-500">
-            {isLogin ? 'Solo para administradores y personal autorizado' : 'Crear cuenta de administración'}
+            Solo para administradores y personal autorizado
+          </p>
+          <p className="text-xs text-gray-400 mt-1">
+            Los nuevos administradores deben ser registrados desde el panel de administración
           </p>
         </div>
 
@@ -187,7 +136,7 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
         )}
 
         {/* Formulario */}
-        <form onSubmit={isLogin ? handleLogin : handleRegister}>
+        <form onSubmit={handleLogin}>
           {/* Campo Usuario */}
           <div className="mb-4">
             <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
@@ -207,25 +156,6 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
             />
           </div>
 
-          {/* Campo Email (solo en registro) */}
-          {!isLogin && (
-            <div className="mb-4">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-                disabled={isLoading}
-                autoComplete="email"
-              />
-            </div>
-          )}
-
           {/* Campo Contraseña */}
           <div className="mb-6">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
@@ -242,7 +172,7 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
                 minLength={VALIDATION_RULES.PASSWORD_MIN_LENGTH}
                 maxLength={VALIDATION_RULES.PASSWORD_MAX_LENGTH}
                 disabled={isLoading}
-                autoComplete={isLogin ? 'current-password' : 'new-password'}
+                autoComplete="current-password"
               />
               <button
                 type="button"
@@ -253,11 +183,6 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
-            {!isLogin && (
-              <p className="mt-1 text-xs text-gray-500">
-                Mínimo 8 caracteres, incluye mayúsculas, minúsculas, números y símbolos
-              </p>
-            )}
           </div>
 
           {/* Botón Submit */}
@@ -266,24 +191,9 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
             disabled={isLoading}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
           >
-            {isLoading ? 'Procesando...' : (isLogin ? 'Iniciar Sesión' : 'Registrarse')}
+            {isLoading ? 'Procesando...' : 'Iniciar Sesión'}
           </button>
         </form>
-
-        {/* Toggle Login/Register */}
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError('');
-              setSuccess('');
-            }}
-            className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
-            disabled={isLoading}
-          >
-            {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-          </button>
-        </div>
       </div>
     </div>
   );
