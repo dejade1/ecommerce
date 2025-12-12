@@ -8,12 +8,13 @@
  * ✅ Navegación sin recargar página
  * ✅ Indicador visual de pestaña activa
  * ✅ Botón de cierre para volver al inicio
- * ✅ Control de permisos por rol
+ * ✅ Control de permisos por rol (ADMIN, USER, CLIENT)
  * ✅ Diseño responsivo
  * ✅ Estadísticas en tiempo real
+ * ✅ USER solo ve "Ajustes de Stock"
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -50,7 +51,7 @@ interface TabConfig {
   label: string;
   icon: React.ElementType;
   component: React.ReactNode;
-  requiredRole?: 'admin' | 'user';
+  allowedRoles?: ('ADMIN' | 'USER')[]; // ✅ Solo ADMIN y USER pueden acceder al panel
 }
 
 export function Dashboard() {
@@ -58,63 +59,85 @@ export function Dashboard() {
   const { logout, user } = useAuth();
 
   // Estado
-  const [activeTab, setActiveTab] = useState<TabType>('inventory');
+  const [activeTab, setActiveTab] = useState<TabType>('stock'); // ✅ Por defecto "stock" para compatibilidad con USER
   const [isSerialConnected, setIsSerialConnected] = useState(false);
   const [serialError, setSerialError] = useState<string | null>(null);
 
-  // Configuración de pestañas
+  // ✅ Configuración de pestañas con control de acceso
   const tabs: TabConfig[] = [
     {
       id: 'inventory',
       label: 'Control de Inventario',
       icon: Package,
-      component: <InventoryTable />
+      component: <InventoryTable />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'products',
       label: 'Gestión de Productos',
       icon: Package,
-      component: <ProductManagement />
+      component: <ProductManagement />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'stock',
       label: 'Ajustes de Stock',
       icon: Archive,
-      component: <InventoryManager />
+      component: <InventoryManager />,
+      allowedRoles: ['ADMIN', 'USER'] // ✅ ADMIN y USER pueden ver
     },
     {
       id: 'orders',
       label: 'Órdenes y Transacciones',
       icon: ShoppingCart,
-      component: <SalesHistory />
+      component: <SalesHistory />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'users',
       label: 'Usuarios',
       icon: Users,
       component: <UserManagement />,
-      requiredRole: 'admin'
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'batches',
       label: 'Lotes',
       icon: Archive,
-      component: <BatchManager />
+      component: <BatchManager />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'reports',
       label: 'Reportes',
       icon: BarChart3,
-      component: <Reports />
+      component: <Reports />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'settings',
       label: 'Configuración',
       icon: SettingsIcon,
       component: <Settings />,
-      requiredRole: 'admin'
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     }
   ];
+
+  // ✅ Filtrar pestañas según el rol del usuario
+  const visibleTabs = tabs.filter(tab => {
+    if (!tab.allowedRoles) return true; // Si no hay restricción, mostrar
+    return tab.allowedRoles.includes(user?.role as 'ADMIN' | 'USER');
+  });
+
+  // ✅ Efecto: Asegurar que la pestaña activa sea visible para el usuario
+  useEffect(() => {
+    const isActiveTabVisible = visibleTabs.some(tab => tab.id === activeTab);
+    
+    if (!isActiveTabVisible && visibleTabs.length > 0) {
+      // Si la pestaña activa no es visible, cambiar a la primera visible
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [user?.role, activeTab, visibleTabs]);
 
   /**
    * Conecta con el hardware ESP32/Arduino
@@ -167,18 +190,49 @@ export function Dashboard() {
   };
 
   /**
-   * Cambia de pestaña
+   * Cambia de pestaña (solo si el usuario tiene permiso)
    */
   const changeTab = (tabId: TabType) => {
-    setActiveTab(tabId);
+    const tab = visibleTabs.find(t => t.id === tabId);
+    if (tab) {
+      setActiveTab(tabId);
+    }
   };
 
   /**
    * Obtiene el componente de la pestaña activa
    */
   const getActiveTabComponent = () => {
-    const activeTabConfig = tabs.find(tab => tab.id === activeTab);
+    const activeTabConfig = visibleTabs.find(tab => tab.id === activeTab);
     return activeTabConfig?.component || null;
+  };
+
+  // ✅ Obtener etiqueta del rol
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'Administrador';
+      case 'USER':
+        return 'Usuario';
+      case 'CLIENT':
+        return 'Cliente';
+      default:
+        return role;
+    }
+  };
+
+  // ✅ Obtener color del badge según rol
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'bg-purple-100 text-purple-700';
+      case 'USER':
+        return 'bg-orange-100 text-orange-700';
+      case 'CLIENT':
+        return 'bg-green-100 text-green-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
   };
 
   return (
@@ -191,16 +245,18 @@ export function Dashboard() {
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">Panel de Administración</h1>
               {user && (
-                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                  {user.username} {user.isAdmin && '(Admin)'}
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  getRoleBadgeColor(user.role)
+                }`}>
+                  {user.username} • {getRoleLabel(user.role)}
                 </span>
               )}
             </div>
 
             {/* Controles de la derecha */}
             <div className="flex items-center gap-2">
-              {/* Botón sincronizar lotes */}
-              <SyncButton />
+              {/* Botón sincronizar lotes - Solo ADMIN */}
+              {user?.role === 'ADMIN' && <SyncButton />}
 
               {/* Botón conectar ESP32 */}
               <button
@@ -255,7 +311,8 @@ export function Dashboard() {
         <div className="bg-white shadow-lg rounded-lg mb-8 overflow-hidden">
           <div className="border-b border-gray-200">
             <nav className="flex overflow-x-auto scrollbar-hide" aria-label="Tabs">
-              {tabs.map((tab) => {
+              {/* ✅ Solo mostrar pestañas visibles según el rol */}
+              {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
 
@@ -266,9 +323,10 @@ export function Dashboard() {
                     className={`
                       flex items-center gap-2 px-6 py-4 whitespace-nowrap font-medium text-sm
                       border-b-2 transition-all duration-200
-                      ${isActive
-                        ? 'border-blue-600 text-blue-600 bg-blue-50'
-                        : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 hover:bg-gray-50'
+                      ${
+                        isActive
+                          ? 'border-blue-600 text-blue-600 bg-blue-50'
+                          : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300 hover:bg-gray-50'
                       }
                     `}
                     aria-current={isActive ? 'page' : undefined}
@@ -284,7 +342,15 @@ export function Dashboard() {
 
         {/* Contenido de la pestaña activa */}
         <div className="bg-white shadow-lg rounded-lg p-6 min-h-[500px]">
-          {getActiveTabComponent()}
+          {visibleTabs.length > 0 ? (
+            getActiveTabComponent()
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">
+                No tienes permisos para acceder a ninguna sección del panel.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
