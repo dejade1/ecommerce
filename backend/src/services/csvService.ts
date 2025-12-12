@@ -200,9 +200,72 @@ export async function generateFullInventoryCSV(): Promise<string> {
   }
 }
 
+/**
+ * Genera CSV con reporte completo de inventario y ventas
+ * Incluye todos los datos consolidados en un solo reporte
+ */
+export async function generateCompleteReportCSV(): Promise<string> {
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: {
+        sales: 'desc',
+      },
+    });
+
+    // Determinar la fecha de "hoy" para identificar nuevos productos
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const data = products.map((p) => {
+      const sales = p.sales || 0; // Ventas totales acumuladas (nunca se resetea)
+      const dailySales = p.dailySales || 0; // Ventas diarias (se resetea al ajustar stock)
+      const totalIngresos = sales * p.price;
+      const ingresosDiarios = dailySales * p.price;
+      const initialStock = p.initialStock || 0;
+      const currentStock = p.stock;
+      const hasDifference = initialStock > 0 && currentStock < initialStock;
+      const difference = hasDifference ? initialStock - currentStock : 0;
+
+      // Verificar si es un producto nuevo (creado hoy)
+      const productCreatedDate = new Date(p.createdAt);
+      productCreatedDate.setHours(0, 0, 0, 0);
+      const isNewProduct = productCreatedDate.getTime() >= today.getTime();
+
+      return {
+        'ID Producto': p.id,
+        Producto: p.title,
+        'Ventas Totales': sales,
+        'Ventas Diarias': dailySales,
+        'Stock Actual': currentStock,
+        'Stock Inicial': initialStock,
+        'Precio Unitario': `$${p.price.toFixed(2)}`,
+        'Total Ingresos': `$${totalIngresos.toFixed(2)}`,
+        'Ingresos Diarios': `$${ingresosDiarios.toFixed(2)}`,
+        'Diferencia Negativa': hasDifference ? difference : 'N/A',
+        'Nuevo Producto': isNewProduct ? 'SÍ' : 'NO',
+        Categoría: p.category || 'N/A',
+        Unidad: p.unit,
+        'Fecha Creación': p.createdAt.toLocaleString('es-ES'),
+      };
+    });
+
+    const csv = stringify(data, {
+      header: true,
+      delimiter: ',',
+    });
+
+    console.log(`✅ Generated Complete Report CSV: ${products.length} products`);
+    return csv;
+  } catch (error) {
+    console.error('❌ Error generating complete report CSV:', error);
+    throw new Error('Error al generar reporte completo');
+  }
+}
+
 export default {
   generateMostSoldProductsCSV,
   generateNegativeDifferencesCSV,
   generateDailyAdjustmentsCSV,
   generateFullInventoryCSV,
+  generateCompleteReportCSV,
 };

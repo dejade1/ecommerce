@@ -1,12 +1,8 @@
 /**
- * ARCHIVO ACTUALIZADO: backend/server.ts
- * 
+ * ARCHIVO NUEVO: backend/server.ts
+ *
  * Servidor backend seguro con Node.js + Express
- * 
- * CORRECCIONES:
- * ✅ Devolver loyaltyPoints y role en todos los endpoints de autenticación
- * ✅ Endpoint para actualizar puntos de lealtad
- * 
+ *
  * CARACTERÍSTICAS DE SEGURIDAD:
  * ✅ Autenticación JWT con httpOnly cookies
  * ✅ Hash de contraseñas con bcrypt
@@ -20,6 +16,9 @@
  * ✅ SQL injection prevention (con Prisma)
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -29,6 +28,9 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { body, validationResult } from 'express-validator';
 import { PrismaClient } from '@prisma/client';
+import emailRoutes from './routes/emailRoutes';
+import productRoutes from './routes/productRoutes';
+import settingsRoutes from './routes/settingsRoutes';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -36,9 +38,22 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
-// Constantes de seguridad
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret';
+// ✅ CORREGIDO: Secretos JWT son OBLIGATORIOS (Seguridad crítica)
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    throw new Error('❌ FATAL: JWT_SECRET must be set in environment and be at least 32 characters');
+}
+
+if (!process.env.JWT_REFRESH_SECRET || process.env.JWT_REFRESH_SECRET.length < 32) {
+    throw new Error('❌ FATAL: JWT_REFRESH_SECRET must be set in environment and be at least 32 characters');
+}
+
+// After validation, we can safely assert these are strings (using 'as string' to satisfy TypeScript)
+const JWT_SECRET = process.env.JWT_SECRET as string;
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
+
+console.log('✅ JWT secrets validated successfully');
+console.log('📧 SMTP configured:', process.env.SMTP_HOST);
+
 const SALT_ROUNDS = 12;
 const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
@@ -596,6 +611,32 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthReq
         res.status(500).json({ error: 'Error al obtener usuarios' });
     }
 });
+
+// ==================== PUBLIC ROUTES ====================
+
+/**
+ * Rutas públicas de productos (sin autenticación)
+ * Permite a la tienda obtener productos
+ */
+app.use('/api/products', productRoutes);
+
+// ==================== EMAIL & REPORTS ROUTES ====================
+
+/**
+ * Rutas de email y reportes (solo admin)
+ */
+app.use('/api/admin', authenticateToken, requireAdmin, emailRoutes);
+console.log('📧 Email routes registered at /api/admin');
+
+/**
+ * Rutas de productos de administración (solo admin)
+ */
+app.use('/api/admin', authenticateToken, requireAdmin, productRoutes);
+
+/**
+ * Rutas de settings/configuración (solo admin)
+ */
+app.use('/api/admin', authenticateToken, requireAdmin, settingsRoutes);
 
 // ==================== MANEJO DE ERRORES ====================
 

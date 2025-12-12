@@ -16,6 +16,7 @@ import {
   generateNegativeDifferencesCSV,
   generateDailyAdjustmentsCSV,
   generateFullInventoryCSV,
+  generateCompleteReportCSV,
 } from '../services/csvService';
 import {
   checkLowStock,
@@ -25,13 +26,15 @@ import {
 
 const router = Router();
 
+console.log('📧 Email routes loaded');
+
 // ==================== EMAIL TESTING ====================
 
 /**
  * POST /api/admin/email/test
  * Envía un email de prueba
  */
-router.post('/test', async (req: Request, res: Response) => {
+router.post('/email/test', async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
@@ -57,7 +60,7 @@ router.post('/test', async (req: Request, res: Response) => {
  * GET /api/admin/email/verify
  * Verifica la conexión SMTP
  */
-router.get('/verify', async (_req: Request, res: Response) => {
+router.get('/email/verify', async (_req: Request, res: Response) => {
   try {
     const isConnected = await verifyEmailConnection();
     return res.json({
@@ -284,4 +287,40 @@ router.post('/reports/inventory', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/admin/reports/complete
+ * Genera y envía reporte completo consolidado con todos los datos
+ */
+router.post('/reports/complete', async (req: Request, res: Response) => {
+  console.log('📧 POST /reports/complete called');
+  try {
+    const { emails } = req.body;
+    console.log('📧 Emails:', emails);
+
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere al menos un email',
+      });
+    }
+
+    const csv = await generateCompleteReportCSV();
+    const result = await sendCSVReport(
+      csv,
+      'complete',
+      'reporte_completo',
+      emails
+    );
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error sending complete report:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al enviar reporte completo',
+    });
+  }
+});
+
 export default router;
+// Forzar reinicio

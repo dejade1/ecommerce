@@ -1,6 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Upload } from 'lucide-react';
-import { db, Product } from '../../lib/db';
+
+// ==================== TIPOS ====================
+
+interface Product {
+  id: number;
+  title: string;
+  description?: string | null;
+  price: number;
+  stock: number;
+  initialStock?: number | null;
+  unit: string;
+  image?: string | null;
+  rating: number;
+  category?: string | null;
+  sales: number;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
 
 interface ProductEditModalProps {
   product: Product;
@@ -9,17 +26,18 @@ interface ProductEditModalProps {
   onSave: () => void;
 }
 
+const API_URL = 'http://localhost:3000';
+
 export function ProductEditModal({ product, isOpen, onClose, onSave }: ProductEditModalProps) {
   const [formData, setFormData] = useState<Partial<Product>>({
     title: '',
+    description: '',
     price: 0,
     stock: 0,
     unit: '',
     image: '',
     rating: 5.0,
     category: '',
-    slot: undefined,
-    beltDistance: undefined,
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -30,16 +48,15 @@ export function ProductEditModal({ product, isOpen, onClose, onSave }: ProductEd
     if (product) {
       setFormData({
         title: product.title,
+        description: product.description || '',
         price: product.price,
         stock: product.stock,
         unit: product.unit,
-        image: product.image,
+        image: product.image || '',
         rating: product.rating,
-        category: product.category,
-        slot: product.slot,
-        beltDistance: product.beltDistance,
+        category: product.category || '',
       });
-      setImagePreview(product.image);
+      setImagePreview(product.image || '');
     }
   }, [product]);
 
@@ -82,44 +99,42 @@ export function ProductEditModal({ product, isOpen, onClose, onSave }: ProductEd
         return;
       }
 
-      // Validar slot si está presente
-      if (formData.slot !== undefined && formData.slot !== null) {
-        if (formData.slot < 1) {
-          setError('El número de slot debe ser mayor o igual a 1');
-          return;
-        }
-        
-        // Verificar que el slot no esté ocupado por otro producto
-        const existingProduct = await db.products
-          .where('slot')
-          .equals(formData.slot)
-          .first();
-        
-        if (existingProduct && existingProduct.id !== product.id) {
-          setError(`El slot ${formData.slot} ya está asignado al producto "${existingProduct.title}"`);
-          return;
-        }
-      }
+      // Preparar datos para actualización
+      const updateData = {
+        title: formData.title.trim(),
+        description: formData.description?.trim() || null,
+        price: formData.price,
+        stock: formData.stock,
+        unit: formData.unit,
+        image: formData.image?.trim() || null,
+        rating: formData.rating || 0,
+        category: formData.category?.trim() || null,
+      };
 
-      // Validar distancia de banda
-      if (formData.beltDistance !== undefined && formData.beltDistance !== null && formData.beltDistance < 0) {
-        setError('La distancia de banda no puede ser negativa');
-        return;
-      }
-
-      await db.products.update(product.id!, {
-        ...formData,
-        updatedAt: new Date(),
+      // Llamar a la API del backend
+      const response = await fetch(`${API_URL}/api/admin/products/${product.id}`, {
+        method: 'PUT',
+        credentials: 'include', // Envía cookies de autenticación
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
       });
 
-      setSuccess('Producto actualizado correctamente');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Error al actualizar producto');
+      }
+
+      setSuccess(result.message || 'Producto actualizado correctamente');
       setTimeout(() => {
         onSave();
         onClose();
       }, 1000);
     } catch (error) {
       console.error('Error al actualizar producto:', error);
-      setError('Error al actualizar el producto');
+      setError(error instanceof Error ? error.message : 'Error al actualizar el producto');
     }
   };
 
@@ -167,6 +182,19 @@ export function ProductEditModal({ product, isOpen, onClose, onSave }: ProductEd
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Descripción
+                  </label>
+                  <textarea
+                    value={formData.description || ''}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    placeholder="Descripción opcional del producto"
                   />
                 </div>
 
@@ -238,43 +266,6 @@ export function ProductEditModal({ product, isOpen, onClose, onSave }: ProductEd
                     <option value="Limpieza">Limpieza</option>
                     <option value="General">General</option>
                   </select>
-                </div>
-
-                {/* NUEVOS CAMPOS DE BANDA TRANSPORTADORA */}
-                <div className="col-span-2 border-t pt-4 mt-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Configuración de Banda Transportadora</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Número de Slot/Banda
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.slot || ''}
-                        onChange={(e) => setFormData({ ...formData, slot: e.target.value ? parseInt(e.target.value) : undefined })}
-                        placeholder="Ej: 1, 2, 3..."
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Número de banda física asignada a este producto</p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Distancia de Banda (cm)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        value={formData.beltDistance || ''}
-                        onChange={(e) => setFormData({ ...formData, beltDistance: e.target.value ? parseFloat(e.target.value) : undefined })}
-                        placeholder="Ej: 15.5"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Distancia para llegar a posición 0.00 cm</p>
-                    </div>
-                  </div>
                 </div>
 
                 {/* CAMPO DE IMAGEN */}
