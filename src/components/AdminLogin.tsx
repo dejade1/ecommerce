@@ -5,11 +5,12 @@
  * ✅ Integración con backend real (JWT)
  * ✅ Uso de AuthContext
  * ✅ Validación centralizada
- * ✅ Eliminada lógica de localStorage insegura
+ * ✅ Bloqueo de rol CLIENT
+ * ✅ Solo permite ADMIN y USER
  */
 
 import { useState, useCallback } from 'react';
-import { X, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
+import { X, Eye, EyeOff, AlertCircle, CheckCircle, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authService } from '../lib/auth-service';
 import {
@@ -41,6 +42,7 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
 
   /**
    * Maneja el login
+   * Solo permite acceso a ADMIN y USER
    */
   const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +67,11 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
       // Llamada al servicio de autenticación
       const user = await authService.login(cleanUsername, password);
 
+      // ✅ NUEVO: Bloquear clientes
+      if (user.role === 'CLIENT') {
+        throw new Error('Los clientes no tienen acceso al panel de administración. Por favor usa el botón "Cuenta" en la parte superior.');
+      }
+
       // Actualizar contexto global
       login(user);
 
@@ -87,6 +94,7 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
 
   /**
    * Maneja el registro
+   * Usuarios registrados aquí tendrán rol USER o ADMIN
    */
   const handleRegister = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,10 +158,18 @@ export function AdminLogin({ onClose }: AdminLoginProps) {
           <X size={24} />
         </button>
 
-        {/* Título */}
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">
-          {isLogin ? 'Iniciar Sesión' : 'Registrarse'}
-        </h2>
+        {/* Título con ícono de administración */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="text-blue-600" size={28} />
+            <h2 className="text-2xl font-bold text-gray-800">
+              {isLogin ? 'Acceso Administrativo' : 'Registro de Personal'}
+            </h2>
+          </div>
+          <p className="text-sm text-gray-500">
+            {isLogin ? 'Solo para administradores y personal autorizado' : 'Crear cuenta de administración'}
+          </p>
+        </div>
 
         {/* Mensajes de error/éxito */}
         {error && (
