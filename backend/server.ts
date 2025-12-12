@@ -3,7 +3,8 @@
  * 
  * Servidor backend seguro con Node.js + Express
  * 
- * NUEVAS CARACTERÍSTICAS:
+ * CORRECCIONES:
+ * ✅ Devolver loyaltyPoints y role en todos los endpoints de autenticación
  * ✅ Endpoint para actualizar puntos de lealtad
  * 
  * CARACTERÍSTICAS DE SEGURIDAD:
@@ -102,15 +103,16 @@ interface User {
     username: string;
     email: string;
     passwordHash: string;
-    isAdmin: boolean;
+    role: string;
+    loyaltyPoints: number;
     createdAt: Date;
-    lastLogin?: Date;
+    lastLogin?: Date | null;
 }
 
 interface JWTPayload {
     userId: number;
     username: string;
-    isAdmin: boolean;
+    role: string;
 }
 
 interface AuthRequest extends Request {
@@ -196,7 +198,7 @@ function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) 
  * Middleware para verificar que el usuario es admin
  */
 function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'ADMIN') {
         return res.status(403).json({ error: 'Acceso denegado. Se requieren permisos de administrador' });
     }
     next();
@@ -244,7 +246,7 @@ app.post('/api/auth/register', authLimiter, registerValidation, async (req: Requ
             return res.status(400).json({ errors: errors.array() });
         }
 
-        const { username, email, password } = req.body;
+        const { username, email, password, role } = req.body;
 
         // Verificar si el usuario ya existe
         const existingUser = await prisma.user.findFirst({
@@ -263,25 +265,31 @@ app.post('/api/auth/register', authLimiter, registerValidation, async (req: Requ
         // Hash de contraseña
         const passwordHash = await hashPassword(password);
 
+        // Validar role
+        const validRoles = ['ADMIN', 'USER', 'CLIENT'];
+        const userRole = validRoles.includes(role) ? role : 'CLIENT';
+
         // Crear usuario
         const user = await prisma.user.create({
             data: {
                 username,
                 email,
                 passwordHash,
-                isAdmin: false,
+                role: userRole,
+                loyaltyPoints: 0,
             },
             select: {
                 id: true,
                 username: true,
                 email: true,
-                isAdmin: true,
+                role: true,
+                loyaltyPoints: true,
                 createdAt: true,
             },
         });
 
         // Log de seguridad
-        console.log(`[SECURITY] New user registered: ${username} (ID: ${user.id})`);
+        console.log(`[SECURITY] New user registered: ${username} (ID: ${user.id}, Role: ${user.role})`);
 
         res.status(201).json({
             message: 'Usuario registrado exitosamente',
@@ -337,7 +345,7 @@ app.post('/api/auth/login', authLimiter, loginValidation, async (req: Request, r
         const payload: JWTPayload = {
             userId: user.id,
             username: user.username,
-            isAdmin: user.isAdmin,
+            role: user.role,
         };
 
         const accessToken = generateAccessToken(payload);
@@ -376,7 +384,8 @@ app.post('/api/auth/login', authLimiter, loginValidation, async (req: Request, r
                 id: user.id,
                 username: user.username,
                 email: user.email,
-                isAdmin: user.isAdmin,
+                role: user.role,
+                loyaltyPoints: user.loyaltyPoints,
             },
         });
 
@@ -419,7 +428,7 @@ app.post('/api/auth/refresh', async (req: Request, res: Response) => {
         const newAccessToken = generateAccessToken({
             userId: storedToken.user.id,
             username: storedToken.user.username,
-            isAdmin: storedToken.user.isAdmin,
+            role: storedToken.user.role,
         });
 
         // Establecer nueva cookie
@@ -479,7 +488,8 @@ app.get('/api/auth/me', authenticateToken, async (req: AuthRequest, res: Respons
                 id: true,
                 username: true,
                 email: true,
-                isAdmin: true,
+                role: true,
+                loyaltyPoints: true,
                 createdAt: true,
                 lastLogin: true,
             },
@@ -516,7 +526,7 @@ app.post('/api/users/:userId/points', authenticateToken, async (req: AuthRequest
 
         // Verificar que el usuario puede actualizar estos puntos
         // Permitir si es el mismo usuario o si es admin
-        if (req.user!.userId !== targetUserId && !req.user!.isAdmin) {
+        if (req.user!.userId !== targetUserId && req.user!.role !== 'ADMIN') {
             return res.status(403).json({ error: 'No tienes permiso para actualizar los puntos de este usuario' });
         }
 
@@ -572,7 +582,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthReq
                 id: true,
                 username: true,
                 email: true,
-                isAdmin: true,
+                role: true,
                 loyaltyPoints: true,
                 createdAt: true,
                 lastLogin: true,
