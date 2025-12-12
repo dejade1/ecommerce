@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, ShoppingCart, Menu, User, MapPin } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, ShoppingCart, Menu, User, MapPin, LogOut, Award } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { ClientLogin } from './ClientLogin';
@@ -12,8 +12,10 @@ interface NavbarProps {
 export function Navbar({ onSearch, searchTerm }: NavbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showClientLogin, setShowClientLogin] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const { state, dispatch } = useCart();
   const { user, isAuthenticated, logout } = useAuth();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onSearch(e.target.value);
@@ -21,20 +23,53 @@ export function Navbar({ onSearch, searchTerm }: NavbarProps) {
 
   const totalItems = state.items.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Cerrar dropdown al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+
+    if (showUserDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserDropdown]);
+
   /**
    * Maneja el clic en el botón de cuenta
-   * Si no está autenticado o es cliente, muestra login de cliente
-   * Si es admin/user, muestra opciones de cuenta
+   * Si no está autenticado, muestra login
+   * Si está autenticado como cliente, muestra dropdown
    */
   const handleAccountClick = () => {
-    if (!isAuthenticated || user?.role === 'CLIENT') {
+    if (!isAuthenticated) {
       setShowClientLogin(true);
+    } else if (user?.role === 'CLIENT') {
+      setShowUserDropdown(!showUserDropdown);
     } else {
-      // Para admin/user podrías mostrar un menú con opciones
-      // Por ahora simplemente muestra el login
-      setShowClientLogin(true);
+      // Admin/User - podría mostrar un menú diferente o redirigir
+      setShowUserDropdown(!showUserDropdown);
     }
   };
+
+  /**
+   * Maneja el logout del usuario
+   */
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setShowUserDropdown(false);
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
+  };
+
+  // Obtener puntos del usuario (por ahora mock, debería venir del backend)
+  const userPoints = user?.points || 0;
 
   return (
     <>
@@ -45,11 +80,7 @@ export function Navbar({ onSearch, searchTerm }: NavbarProps) {
               <div className="text-2xl font-bold">Tienda</div>
               <div className="hidden md:flex items-center space-x-2">
                 <MapPin className="w-5 h-5" />
-                <span className="text-sm">
-                  {isAuthenticated && user?.role === 'CLIENT' 
-                    ? `Hola, ${user.username}` 
-                    : 'Enviar a Usuario'}
-                </span>
+                <span className="text-sm">Enviar a Usuario</span>
               </div>
             </div>
 
@@ -69,24 +100,59 @@ export function Navbar({ onSearch, searchTerm }: NavbarProps) {
             </div>
 
             <div className="hidden md:flex items-center space-x-6">
+              {/* Botón de cuenta con dropdown */}
+              <div className="relative" ref={dropdownRef}>
+                <button 
+                  onClick={handleAccountClick}
+                  className="flex items-center space-x-1 hover:text-yellow-400 transition-colors"
+                >
+                  <User className="w-5 h-5" />
+                  <span>
+                    {isAuthenticated && user?.role === 'CLIENT'
+                      ? `Hola, ${user.username}`
+                      : 'Iniciar Sesión'}
+                  </span>
+                </button>
+
+                {/* Dropdown menu */}
+                {showUserDropdown && isAuthenticated && user?.role === 'CLIENT' && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl py-2 z-50 border border-gray-200">
+                    {/* Header del usuario */}
+                    <div className="px-4 py-3 border-b border-gray-200">
+                      <p className="text-sm font-semibold text-gray-900">Hola, {user.username}</p>
+                      <p className="text-xs text-gray-500">{user.email}</p>
+                    </div>
+
+                    {/* Puntos */}
+                    <div className="px-4 py-3 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Award className="w-5 h-5 text-yellow-500" />
+                          <span className="text-sm text-gray-700">Mis Puntos</span>
+                        </div>
+                        <span className="text-lg font-bold text-yellow-500">{userPoints}</span>
+                      </div>
+                    </div>
+
+                    {/* Opción de cerrar sesión */}
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Cerrar Sesión</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button 
-                onClick={handleAccountClick}
-                className="flex items-center space-x-1 hover:text-yellow-400"
-              >
-                <User className="w-5 h-5" />
-                <span>
-                  {isAuthenticated && user?.role === 'CLIENT'
-                    ? user.username
-                    : 'Cuenta'}
-                </span>
-              </button>
-              <button 
-                className="flex items-center space-x-1 hover:text-yellow-400"
+                className="flex items-center space-x-1 hover:text-yellow-400 transition-colors"
                 onClick={() => dispatch({ type: 'TOGGLE_CART' })}
               >
                 <ShoppingCart className="w-5 h-5" />
                 {totalItems > 0 && (
-                  <span className="bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                  <span className="bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-xs font-semibold">
                     {totalItems}
                   </span>
                 )}
@@ -101,6 +167,7 @@ export function Navbar({ onSearch, searchTerm }: NavbarProps) {
             </button>
           </div>
 
+          {/* Menú móvil */}
           {isMenuOpen && (
             <div className="md:hidden px-2 pt-2 pb-3 space-y-1">
               <button
@@ -108,9 +175,27 @@ export function Navbar({ onSearch, searchTerm }: NavbarProps) {
                 className="block w-full text-left px-3 py-2 rounded-md text-white hover:bg-gray-700"
               >
                 {isAuthenticated && user?.role === 'CLIENT'
-                  ? user.username
-                  : 'Cuenta'}
+                  ? `Hola, ${user.username}`
+                  : 'Iniciar Sesión'}
               </button>
+              
+              {isAuthenticated && user?.role === 'CLIENT' && (
+                <>
+                  <div className="px-3 py-2 text-sm text-gray-300">
+                    <div className="flex items-center justify-between">
+                      <span>Mis Puntos:</span>
+                      <span className="text-yellow-400 font-bold">{userPoints}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full text-left px-3 py-2 rounded-md text-white hover:bg-gray-700"
+                  >
+                    Cerrar Sesión
+                  </button>
+                </>
+              )}
+
               <button
                 onClick={() => dispatch({ type: 'TOGGLE_CART' })}
                 className="block w-full text-left px-3 py-2 rounded-md text-white hover:bg-gray-700"
