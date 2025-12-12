@@ -382,7 +382,6 @@ export function SalesHistory() {
                       <div className="bg-gray-50 rounded-md p-3">
                         <p className="text-xs font-medium text-gray-700 mb-2">Productos:</p>
                         <div className="space-y-2">
-<<<<<<< HEAD
                           {transaction.items.map((item) => {
                             const product = item.product;
                             const productTitle = product?.title || 'Producto eliminado';
@@ -412,24 +411,6 @@ export function SalesHistory() {
                                     ${(item.quantity * item.price).toFixed(2)}
                                   </span>
                                 </div>
-=======
-                          {transaction.items.map((item) => (
-                            <div key={item.id} className="flex justify-between items-center text-sm">
-                              <div className="flex items-center">
-                                {item.product && (
-                                  <>
-                                    <img
-                                      src={item.product.image}
-                                      alt={item.product.title}
-                                      className="h-6 w-6 rounded-full object-cover mr-2"
-                                    />
-                                    <span className="text-gray-900">{item.product.title}</span>
-                                  </>
-                                )}
-                                {!item.product && (
-                                  <span className="text-gray-500">Producto no disponible</span>
-                                )}
->>>>>>> origin/correcciones-javier
                               </div>
                             );
                           })}
