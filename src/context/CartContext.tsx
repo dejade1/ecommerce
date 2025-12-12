@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
 import { createOrder } from '../lib/inventory';
 import { useLedNotification } from '../hooks/useLedNotification';
+import { useAuth } from './AuthContext';
 import type { Product } from '../lib/inventory';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 // Types
 interface CartItem extends Product {
@@ -94,6 +97,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   });
 
   const { notifyPurchase } = useLedNotification();
+  const { user, checkSession } = useAuth();
 
   const checkout = useCallback(async () => {
     try {
@@ -103,8 +107,48 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         price: item.price
       }));
 
+      // Calcular total
+      const total = state.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
       // Crear la orden
       const orderId = await createOrder(orderItems);
+
+      // ✅ NUEVO: Si el usuario está autenticado y es cliente, actualizar puntos de lealtad
+      if (user && user.role === 'CLIENT') {
+        try {
+          // Calcular puntos: 1 punto por cada dólar gastado
+          const pointsEarned = Math.floor(total);
+
+          console.log(`[Loyalty] Usuario ${user.username} ganó ${pointsEarned} puntos`);
+
+          // Actualizar puntos en el backend
+          const response = await fetch(`${API_URL}/users/${user.id}/points`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              points: pointsEarned,
+              orderId
+            })
+          });
+
+          if (response.ok) {
+            console.log(`[Loyalty] Puntos actualizados exitosamente`);
+            // Actualizar el contexto de autenticación para reflejar los nuevos puntos
+            await checkSession();
+          } else {
+            console.warn('[Loyalty] No se pudieron actualizar los puntos en el servidor');
+          }
+        } catch (pointsError) {
+          console.error('[Loyalty] Error al actualizar puntos:', pointsError);
+          // No fallar la compra si hay error con puntos
+        }
+      }
 
       // Notificar al sistema LED
       console.log('Notificando sistema LED...');
@@ -120,7 +164,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       dispatch({ type: 'CLEAR_CART' });
-      alert(`¡Orden #${orderId} creada con éxito!`);
+      
+      // Mostrar mensaje con puntos ganados si es cliente
+      if (user && user.role === 'CLIENT') {
+        const pointsEarned = Math.floor(total);
+        alert(`¡Orden #${orderId} creada con éxito!\n¡Ganaste ${pointsEarned} puntos de lealtad!`);
+      } else {
+        alert(`¡Orden #${orderId} creada con éxito!`);
+      }
     } catch (error) {
       console.error('Error en checkout:', error);
       if (error instanceof Error) {
@@ -129,7 +180,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         alert('Error al procesar la orden');
       }
     }
-  }, [state.items, notifyPurchase]);
+  }, [state.items, notifyPurchase, user, checkSession]);
 
   return (
     <CartContext.Provider value={{ state, dispatch, checkout }}>
