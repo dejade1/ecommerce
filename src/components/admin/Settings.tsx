@@ -91,17 +91,7 @@ export function Settings() {
   const [isBrevoConfigured, setIsBrevoConfigured] = useState(false);
 
   useEffect(() => {
-<<<<<<< HEAD
-    // Cargar configuración guardada
-    const savedSettings = localStorage.getItem('app_settings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
-
-    // Verificar configuración de Brevo
-    setIsBrevoConfigured(emailService.isConfigured());
-=======
-    // Cargar configuración desde el backend
+       // Cargar configuración desde el backend con fallback a localStorage
     const loadSettings = async () => {
       try {
         const response = await fetch('http://localhost:3000/api/admin/settings', {
@@ -126,7 +116,10 @@ export function Settings() {
     };
 
     loadSettings();
->>>>>>> origin/correcciones-javier
+    
+    // Verificar configuración de Brevo
+    setIsBrevoConfigured(emailService.isConfigured());
+
   }, []);
 
   /**
