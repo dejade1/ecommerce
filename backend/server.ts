@@ -1,7 +1,10 @@
 /**
- * ARCHIVO NUEVO: backend/server.ts
+ * ARCHIVO ACTUALIZADO: backend/server.ts
  * 
  * Servidor backend seguro con Node.js + Express
+ * 
+ * NUEVAS CARACTERÍSTICAS:
+ * ✅ Endpoint para actualizar puntos de lealtad
  * 
  * CARACTERÍSTICAS DE SEGURIDAD:
  * ✅ Autenticación JWT con httpOnly cookies
@@ -494,6 +497,68 @@ app.get('/api/auth/me', authenticateToken, async (req: AuthRequest, res: Respons
     }
 });
 
+// ==================== RUTAS DE PUNTOS DE LEALTAD ====================
+
+/**
+ * POST /api/users/:userId/points
+ * Actualiza los puntos de lealtad de un usuario
+ * Solo para usuarios autenticados (el propio usuario o un admin)
+ */
+app.post('/api/users/:userId/points', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const targetUserId = parseInt(req.params.userId, 10);
+        const { points, orderId } = req.body;
+
+        // Validar que sea un número positivo
+        if (!points || points < 0 || isNaN(points)) {
+            return res.status(400).json({ error: 'Los puntos deben ser un número positivo' });
+        }
+
+        // Verificar que el usuario puede actualizar estos puntos
+        // Permitir si es el mismo usuario o si es admin
+        if (req.user!.userId !== targetUserId && !req.user!.isAdmin) {
+            return res.status(403).json({ error: 'No tienes permiso para actualizar los puntos de este usuario' });
+        }
+
+        // Obtener usuario actual
+        const user = await prisma.user.findUnique({
+            where: { id: targetUserId },
+        });
+
+        if (!user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        // Calcular nuevos puntos
+        const currentPoints = user.loyaltyPoints || 0;
+        const newPoints = currentPoints + points;
+
+        // Actualizar puntos
+        const updatedUser = await prisma.user.update({
+            where: { id: targetUserId },
+            data: { loyaltyPoints: newPoints },
+            select: {
+                id: true,
+                username: true,
+                loyaltyPoints: true,
+            },
+        });
+
+        // Log de seguridad
+        console.log(`[LOYALTY] User ${user.username} earned ${points} points (Order: ${orderId || 'N/A'}). Total: ${newPoints}`);
+
+        res.json({
+            success: true,
+            message: 'Puntos actualizados exitosamente',
+            user: updatedUser,
+        });
+
+    } catch (error) {
+        console.error('[ERROR] Update points failed:', error);
+        res.status(500).json({ error: 'Error al actualizar puntos' });
+    }
+});
+
 // ==================== RUTAS PROTEGIDAS (EJEMPLO) ====================
 
 /**
@@ -508,6 +573,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req: AuthReq
                 username: true,
                 email: true,
                 isAdmin: true,
+                loyaltyPoints: true,
                 createdAt: true,
                 lastLogin: true,
             },
@@ -543,8 +609,9 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`📏 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security features enabled`);
+    console.log(`🎆 Loyalty points system enabled`);
 });
 
 // Manejo de cierre graceful
