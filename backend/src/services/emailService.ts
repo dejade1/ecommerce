@@ -21,20 +21,17 @@ class EmailService {
   private fromName: string;
 
   constructor() {
-    // Configurar Brevo API
-    const apiKey = process.env.BREVO_API_KEY;
-    
-    if (!apiKey) {
-      console.warn('⚠️  BREVO_API_KEY no configurado. Emails no se enviarán.');
-    }
-
     this.fromEmail = process.env.EMAIL_FROM || 'noreply@example.com';
     this.fromName = process.env.EMAIL_FROM_NAME || 'Ecommerce';
 
     this.apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+    
+    // Configurar API key al momento de la construcción
+    // pero verificaremos la existencia al momento de enviar
+    const apiKey = process.env.BREVO_API_KEY || '';
     this.apiInstance.setApiKey(
       SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
-      apiKey || ''
+      apiKey
     );
   }
 
@@ -43,12 +40,22 @@ class EmailService {
    */
   async sendEmail(options: EmailOptions): Promise<boolean> {
     try {
-      if (!process.env.BREVO_API_KEY) {
+      // Verificar en RUNTIME si existe la API key
+      const apiKey = process.env.BREVO_API_KEY;
+      
+      if (!apiKey) {
         console.log('📧 [EMAIL] Modo desarrollo: Email no enviado');
         console.log('   To:', options.to);
         console.log('   Subject:', options.subject);
+        console.log('   ⚠️  BREVO_API_KEY no está configurado en las variables de entorno');
         return false;
       }
+
+      // Actualizar API key por si acaso
+      this.apiInstance.setApiKey(
+        SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+        apiKey
+      );
 
       const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
       
@@ -74,16 +81,15 @@ class EmailService {
       const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       
       console.log('✅ [EMAIL] Email enviado exitosamente a:', options.to);
-      // Fix: result puede tener diferentes estructuras según la versión de la API
       if (result && typeof result === 'object') {
-        console.log('   Email sent successfully');
+        console.log('   Message ID:', (result as any).messageId || 'N/A');
       }
       
       return true;
     } catch (error: any) {
       console.error('❌ [EMAIL] Error enviando email:', error.message);
       if (error.response) {
-        console.error('   Response:', error.response);
+        console.error('   Response:', JSON.stringify(error.response.body || error.response, null, 2));
       }
       return false;
     }
@@ -246,7 +252,10 @@ export async function sendCSVReport(
     const title = reportTitles[reportType] || 'Reporte';
     const results = [];
 
+    console.log(`📧 [CSV] Enviando ${title} a ${emails.length} destinatario(s)...`);
+
     for (const email of emails) {
+      console.log(`📧 [CSV] Enviando a: ${email}`);
       const success = await emailService.sendEmail({
         to: email,
         subject: `📄 ${title} - ${new Date().toLocaleDateString('es-ES')}`,
@@ -269,15 +278,19 @@ export async function sendCSVReport(
         }]
       });
       results.push({ email, success });
+      console.log(`📧 [CSV] Resultado para ${email}: ${success ? '✅ ENVIADO' : '❌ ERROR'}`);
     }
+
+    const totalSent = results.filter(r => r.success).length;
+    console.log(`📧 [CSV] Resumen: ${totalSent}/${results.length} emails enviados`);
 
     return {
       success: results.every(r => r.success),
-      sent: results.filter(r => r.success).length,
+      sent: totalSent,
       total: results.length,
       message: results.every(r => r.success)
         ? 'Reporte enviado exitosamente a todos los destinatarios'
-        : `Reporte enviado a ${results.filter(r => r.success).length} de ${results.length} destinatarios`
+        : `Reporte enviado a ${totalSent} de ${results.length} destinatarios`
     };
   } catch (error) {
     console.error('Error sending CSV report:', error);
