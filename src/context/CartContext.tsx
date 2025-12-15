@@ -1,12 +1,26 @@
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
-import { createOrder } from '../lib/inventory';
 import { useLedNotification } from '../hooks/useLedNotification';
 import { useAuth } from './AuthContext';
-import type { Product } from '../lib/inventory';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-// Types
+// ==================== TIPOS ====================
+
+interface Product {
+  id: number;
+  title: string;
+  description?: string | null;
+  price: number;
+  stock: number;
+  unit: string;
+  image?: string | null;
+  rating: number;
+  category?: string | null;
+  sales: number;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
 interface CartItem extends Product {
   quantity: number;
 }
@@ -29,10 +43,12 @@ interface CartContextType {
   checkout: () => Promise<void>;
 }
 
-// Context
+// ==================== CONTEXT ====================
+
 const CartContext = createContext<CartContextType | null>(null);
 
-// Reducer
+// ==================== REDUCER ====================
+
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD_ITEM': {
@@ -89,7 +105,41 @@ function cartReducer(state: CartState, action: CartAction): CartState {
   }
 }
 
-// Provider Component
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * ✅ Crear orden directamente en el backend
+ * Sin IndexedDB, sin sincronización
+ */
+async function createOrder(items: { productId: number; quantity: number; price: number }[]): Promise<number> {
+  try {
+    console.log('📦 Creando orden en el backend...', items);
+
+    const response = await fetch(`${API_URL}/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ items }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorData.message || 'Error al crear la orden');
+    }
+
+    const data = await response.json();
+    console.log('✅ Orden creada:', data);
+
+    return data.orderId;
+  } catch (error) {
+    console.error('❌ Error al crear orden:', error);
+    throw error;
+  }
+}
+
+// ==================== PROVIDER ====================
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, {
     items: [],
@@ -113,7 +163,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         0
       );
 
-      // Crear la orden
+      // ✅ Crear la orden DIRECTAMENTE en el backend
       const orderId = await createOrder(orderItems);
 
       // ✅ NUEVO: Si el usuario está autenticado y es cliente, actualizar puntos de lealtad
@@ -189,7 +239,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Custom Hook
+// ==================== CUSTOM HOOK ====================
+
 export function useCart() {
   const context = useContext(CartContext);
   if (!context) {
@@ -198,5 +249,6 @@ export function useCart() {
   return context;
 }
 
-// Types Export
-export type { CartItem, CartState, CartAction, CartContextType };
+// ==================== EXPORTS ====================
+
+export type { CartItem, CartState, CartAction, CartContextType, Product };
