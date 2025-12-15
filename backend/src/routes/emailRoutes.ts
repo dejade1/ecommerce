@@ -156,6 +156,81 @@ router.get('/monitor/stats', async (_req: Request, res: Response) => {
 // ==================== CSV REPORTS ====================
 
 /**
+ * POST /api/admin/email/send-report
+ * Ruta genérica para enviar reportes CSV
+ * Redirige según el tipo de reporte especificado
+ */
+router.post('/send-report', async (req: Request, res: Response) => {
+  console.log('📧 POST /send-report called');
+  try {
+    const { reportType, recipients } = req.body;
+    console.log('📧 Report type:', reportType);
+    console.log('📧 Recipients:', recipients);
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Se requiere al menos un email destinatario',
+      });
+    }
+
+    let csv: string;
+    let filename: string;
+
+    // Generar CSV según el tipo de reporte
+    switch (reportType) {
+      case 'most-sold':
+        csv = await generateMostSoldProductsCSV();
+        filename = 'productos_mas_vendidos';
+        break;
+
+      case 'negative-diff':
+        csv = await generateNegativeDifferencesCSV();
+        filename = 'productos_diferencias_negativas';
+        break;
+
+      case 'adjustments':
+        csv = await generateDailyAdjustmentsCSV();
+        filename = 'historial_ajustes';
+        break;
+
+      case 'inventory':
+        csv = await generateFullInventoryCSV();
+        filename = 'inventario_completo';
+        break;
+
+      case 'complete':
+        csv = await generateCompleteReportCSV();
+        filename = 'reporte_completo';
+        break;
+
+      default:
+        return res.status(400).json({
+          success: false,
+          message: `Tipo de reporte inválido: ${reportType}`,
+        });
+    }
+
+    // Enviar CSV por email
+    const result = await sendCSVReport(
+      csv,
+      reportType,
+      filename,
+      recipients
+    );
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error sending report:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al enviar reporte',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * POST /api/admin/reports/most-sold
  * Genera y envía reporte de productos más vendidos
  */
@@ -323,4 +398,3 @@ router.post('/reports/complete', async (req: Request, res: Response) => {
 });
 
 export default router;
-// Forzar reinicio
