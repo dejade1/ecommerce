@@ -14,6 +14,7 @@
  * ✅ Logging de seguridad
  * ✅ CSRF protection
  * ✅ SQL injection prevention (con Prisma)
+ * ✅ Automatic report scheduler
  */
 
 import dotenv from 'dotenv';
@@ -31,6 +32,7 @@ import { PrismaClient } from '@prisma/client';
 import emailRoutes from './routes/emailRoutes';
 import productRoutes from './routes/productRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import { startReportScheduler, stopReportScheduler } from './services/reportScheduler';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -684,6 +686,7 @@ console.log('📧 Email routes registered at /api/admin/email');
  */
 app.use('/api/admin/settings', authenticateToken, requireAdmin, settingsRoutes);
 console.log('⚙️  Settings routes registered at /api/admin/settings');
+
 // ==================== MANEJO DE ERRORES ====================
 
 // 404
@@ -709,17 +712,22 @@ app.listen(PORT, () => {
     console.log(`📏 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security features enabled`);
     console.log(`🎆 Loyalty points system enabled`);
+    
+    // Iniciar el scheduler de reportes automáticos
+    startReportScheduler();
 });
 
 // Manejo de cierre graceful
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received, closing server...');
+    stopReportScheduler();
     await prisma.$disconnect();
     process.exit(0);
 });
 
 process.on('SIGINT', async () => {
     console.log('SIGINT received, closing server...');
+    stopReportScheduler();
     await prisma.$disconnect();
     process.exit(0);
 });
