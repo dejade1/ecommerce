@@ -659,20 +659,21 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: 
 });
 
 
-// ==================== PUBLIC ROUTES ====================
+// ==================== PUBLIC & ADMIN ROUTES ====================
 
 /**
  * Rutas públicas de productos (sin autenticación)
- * Permite a la tienda obtener productos
+ * Montadas en /api/products para acceso público
  */
-// ==================== PUBLIC ROUTES ====================
+app.use('/api/products', productRoutes);
+console.log('🛍️  Public product routes registered at /api/products');
 
 /**
- * Rutas públicas de productos (sin autenticación)
- * CORREGIDO: Montar en /api/admin para que /api/admin/products funcione
+ * Rutas de admin de productos (requieren autenticación)
+ * Montadas en /api/admin para panel de administración
  */
 app.use('/api/admin', productRoutes);
-console.log('📦 Product routes registered at /api/admin/products');
+console.log('📦 Admin product routes registered at /api/admin/products');
 
 // ==================== EMAIL & REPORTS ROUTES ====================
 
