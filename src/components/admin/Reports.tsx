@@ -62,6 +62,13 @@ export function Reports() {
 
   useEffect(() => {
     loadReportData();
+
+    // Auto-refresh cada 30 segundos
+    const interval = setInterval(() => {
+      loadReportData();
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(interval);
   }, [dateRange]);
 
   /**
@@ -196,7 +203,12 @@ export function Reports() {
       // Calcular diferencias de stock
       const differences: ProductDifference[] = products
         .map(product => {
-          const initialStock = product.initialStock ?? product.stock;
+          // Si initialStock no está definido, usar el stock actual como inicial
+          // Esto significa que el producto fue creado sin un stock inicial registrado
+          const initialStock = product.initialStock !== undefined && product.initialStock !== null
+            ? product.initialStock
+            : product.stock;
+
           const difference = product.stock - initialStock;
           let status: 'critical' | 'attention' | 'ok' = 'ok';
 
