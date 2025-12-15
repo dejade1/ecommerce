@@ -12,7 +12,7 @@ import jwt from 'jsonwebtoken';
 interface JWTPayload {
     userId: number;
     username: string;
-    isAdmin: boolean;
+    role: string; // CORREGIDO: Usar 'role' en lugar de 'isAdmin'
 }
 
 export interface AuthRequest extends Request {
@@ -59,9 +59,10 @@ export function authenticateToken(req: AuthRequest, res: Response, next: NextFun
 
 /**
  * Middleware para verificar que el usuario es admin
+ * CORREGIDO: Verificar role === 'ADMIN' en lugar de isAdmin
  */
 export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'ADMIN') {
         return res.status(403).json({ error: 'Acceso denegado. Se requieren permisos de administrador' });
     }
     next();
