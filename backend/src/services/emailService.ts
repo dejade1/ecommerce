@@ -74,13 +74,16 @@ class EmailService {
       const result = await this.apiInstance.sendTransacEmail(sendSmtpEmail);
       
       console.log('✅ [EMAIL] Email enviado exitosamente a:', options.to);
-      console.log('   Message ID:', result.response.body.messageId);
+      // Fix: result puede tener diferentes estructuras según la versión de la API
+      if (result && typeof result === 'object') {
+        console.log('   Email sent successfully');
+      }
       
       return true;
     } catch (error: any) {
       console.error('❌ [EMAIL] Error enviando email:', error.message);
       if (error.response) {
-        console.error('   Response:', error.response.body);
+        console.error('   Response:', error.response);
       }
       return false;
     }
