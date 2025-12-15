@@ -7,6 +7,7 @@
  * 3. ✅ Tipos estrictos
  * 4. ✅ Manejo de errores centralizado
  * 5. ✅ NUEVO: Generación automática de códigos de lote con formato correcto
+ * 6. ✅ Sincronización de dailySales al backend
  */
 
 import { db } from './db';
@@ -178,7 +179,7 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
     try {
       const product = await db.products.get(item.productId);
       if (product) {
-        // Una sola petición PATCH para actualizar tanto ventas como stock
+        // Una sola petición PATCH para actualizar ventas, ventas diarias y stock
         await fetch(`http://localhost:3000/api/products/${item.productId}/sales`, {
           method: 'PATCH',
           headers: {
@@ -186,11 +187,12 @@ export async function createOrder(items: OrderItem[]): Promise<number> {
           },
           body: JSON.stringify({
             sales: product.sales || 0,
+            dailySales: product.dailySales || 0,
             stock: product.stock
           })
         });
 
-        console.log(`✅ Datos sincronizados al backend: ${product.title} - ${product.sales} ventas, ${product.stock} stock`);
+        console.log(`✅ Datos sincronizados al backend: ${product.title} - ${product.sales} ventas totales, ${product.dailySales} ventas diarias, ${product.stock} stock`);
       }
     } catch (error) {
       console.error('⚠️ Error sincronizando al backend:', error);
