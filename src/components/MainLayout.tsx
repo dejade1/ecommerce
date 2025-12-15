@@ -31,7 +31,7 @@ export function MainLayout() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Cargar productos desde el backend
+  // ✅ Cargar productos SOLO desde el backend (sin IndexedDB)
   useEffect(() => {
     const loadProducts = async () => {
       try {
@@ -55,62 +55,14 @@ export function MainLayout() {
 
         const data = await response.json();
 
-        console.log('✅ Productos recibidos del backend:', data.products?.length, 'productos');
-        console.log('📦 Productos:', data.products?.map(p => p.title));
+        console.log('✅ Productos recibidos del backend:', data.products?.length || 0, 'productos');
 
         if (data.success && data.products) {
           setProducts(data.products);
           setFilteredProducts(data.products);
-
-          // ✅ SINCRONIZAR CON INDEXEDDB para que el checkout funcione
-          const { db } = await import('../lib/db');
-          console.log('💾 Sincronizando productos con IndexedDB...');
-
-          for (const product of data.products) {
-            const exists = await db.products.get(product.id);
-            if (exists) {
-              // Actualizar todos los campos desde el backend (backend es fuente de verdad)
-              await db.products.update(product.id, {
-                title: product.title,
-                description: product.description,
-                price: product.price,
-                stock: product.stock, // ✅ Sincronizar stock desde backend
-                sales: product.sales || 0, // ✅ Sincronizar ventas desde backend
-                initialStock: product.initialStock || product.stock, // ✅ Sincronizar stock inicial
-                unit: product.unit,
-                image: product.image,
-                rating: product.rating,
-                category: product.category,
-                updatedAt: product.updatedAt
-              });
-            } else {
-              await db.products.add(product);
-            }
-
-            // Crear lote inicial si el producto tiene stock pero no tiene lotes
-            if (product.stock > 0) {
-              const batches = await db.batches.where('productId').equals(product.id).toArray();
-              const totalBatchQty = batches.reduce((sum, b) => sum + b.quantity, 0);
-
-              if (totalBatchQty === 0) {
-                // Crear lote inicial con 6 meses de vencimiento
-                const expiryDate = new Date();
-                expiryDate.setMonth(expiryDate.getMonth() + 6);
-
-                await db.batches.add({
-                  productId: product.id,
-                  batchCode: `INIT-${product.id}-${Date.now()}`,
-                  quantity: product.stock,
-                  expiryDate: expiryDate.toISOString().split('T')[0],
-                  createdAt: new Date().toISOString()
-                });
-
-                console.log(`📦 Lote inicial creado para "${product.title}": ${product.stock} unidades`);
-              }
-            }
-          }
-
-          console.log('✅ Productos sincronizados con IndexedDB');
+          console.log('🎉 Productos cargados exitosamente');
+        } else {
+          console.log('⚠️  No hay productos en el backend');
         }
       } catch (err) {
         console.error('❌ Error loading products:', err);
@@ -142,7 +94,7 @@ export function MainLayout() {
         {/* Estado de carga */}
         {loading && (
           <div className="text-center py-12">
-            <p className="text-gray-600 text-lg">Cargando productos...</p>
+            <p className="text-gray-600 text-lg">🔄 Cargando productos...</p>
           </div>
         )}
 
@@ -177,7 +129,7 @@ export function MainLayout() {
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-2xl font-bold text-gray-900">Productos Disponibles</h2>
                     <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                      {products.length} productos desde backend
+                      {products.length} productos
                     </span>
                   </div>
                   {products.length > 0 ? (
@@ -187,7 +139,14 @@ export function MainLayout() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-gray-600">No hay productos disponibles en este momento.</p>
+                    <div className="text-center py-12">
+                      <p className="text-gray-600 text-lg mb-4">
+                        📦 No hay productos disponibles en este momento.
+                      </p>
+                      <p className="text-gray-500 text-sm">
+                        Los productos se agregan desde el panel de administración.
+                      </p>
+                    </div>
                   )}
                 </div>
               </>
