@@ -89,7 +89,7 @@ class EmailService {
   /**
    * Enviar email de prueba
    */
-  async sendTestEmail(to: string): Promise<boolean> {
+  async sendTestEmailMethod(to: string): Promise<boolean> {
     return this.sendEmail({
       to,
       subject: '🎉 Email de Prueba - Ecommerce',
@@ -135,3 +135,154 @@ class EmailService {
 }
 
 export const emailService = new EmailService();
+
+// ==================== EXPORTED FUNCTIONS FOR ROUTES ====================
+
+/**
+ * Verifica la conexión con el servicio de email
+ */
+export async function verifyEmailConnection(): Promise<boolean> {
+  try {
+    if (!process.env.BREVO_API_KEY) {
+      console.log('⚠️  BREVO_API_KEY no configurado');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error verifying email connection:', error);
+    return false;
+  }
+}
+
+/**
+ * Envía un email de prueba
+ */
+export async function sendTestEmail(email: string) {
+  try {
+    const success = await emailService.sendTestEmailMethod(email);
+    return {
+      success,
+      message: success 
+        ? 'Email de prueba enviado exitosamente' 
+        : 'Error al enviar email de prueba'
+    };
+  } catch (error) {
+    console.error('Error sending test email:', error);
+    return {
+      success: false,
+      message: 'Error al enviar email de prueba'
+    };
+  }
+}
+
+/**
+ * Envía alerta de stock bajo
+ */
+export async function sendLowStockAlert(params: {
+  productName: string;
+  currentStock: number;
+  threshold: number;
+  emails: string[];
+}) {
+  try {
+    const results = [];
+    for (const email of params.emails) {
+      const success = await emailService.sendEmail({
+        to: email,
+        subject: `⚠️ Alerta: Stock Bajo - ${params.productName}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #EF4444;">⚠️ Alerta de Stock Bajo</h1>
+            <p><strong>Producto:</strong> ${params.productName}</p>
+            <p><strong>Stock actual:</strong> ${params.currentStock} unidades</p>
+            <p><strong>Umbral de alerta:</strong> ${params.threshold} unidades</p>
+            <p style="color: #EF4444; font-weight: bold;">¡Es necesario reabastecer este producto!</p>
+            <hr style="border: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #6B7280; font-size: 14px;">
+              Fecha: ${new Date().toLocaleString('es-ES')}
+            </p>
+          </div>
+        `
+      });
+      results.push({ email, success });
+    }
+    
+    return {
+      success: results.every(r => r.success),
+      sent: results.filter(r => r.success).length,
+      total: results.length
+    };
+  } catch (error) {
+    console.error('Error sending low stock alert:', error);
+    return {
+      success: false,
+      sent: 0,
+      total: params.emails.length
+    };
+  }
+}
+
+/**
+ * Envía reporte CSV por email
+ */
+export async function sendCSVReport(
+  csvData: string,
+  reportType: string,
+  filename: string,
+  emails: string[]
+) {
+  try {
+    const reportTitles: { [key: string]: string } = {
+      'most-sold': 'Productos Más Vendidos',
+      'negative-diff': 'Productos con Diferencias Negativas',
+      'adjustments': 'Historial de Ajustes',
+      'inventory': 'Inventario Completo',
+      'complete': 'Reporte Completo'
+    };
+
+    const title = reportTitles[reportType] || 'Reporte';
+    const results = [];
+
+    for (const email of emails) {
+      const success = await emailService.sendEmail({
+        to: email,
+        subject: `📄 ${title} - ${new Date().toLocaleDateString('es-ES')}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #EAB308;">${title}</h1>
+            <p>Adjunto encontrarás el reporte solicitado en formato CSV.</p>
+            <p><strong>Fecha:</strong> ${new Date().toLocaleString('es-ES')}</p>
+            <p><strong>Tipo:</strong> ${title}</p>
+            <hr style="border: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #6B7280; font-size: 14px;">
+              Este reporte fue generado automáticamente desde el panel de administración.
+            </p>
+          </div>
+        `,
+        attachments: [{
+          filename: `${filename}_${Date.now()}.csv`,
+          content: csvData,
+          contentType: 'text/csv'
+        }]
+      });
+      results.push({ email, success });
+    }
+
+    return {
+      success: results.every(r => r.success),
+      sent: results.filter(r => r.success).length,
+      total: results.length,
+      message: results.every(r => r.success)
+        ? 'Reporte enviado exitosamente a todos los destinatarios'
+        : `Reporte enviado a ${results.filter(r => r.success).length} de ${results.length} destinatarios`
+    };
+  } catch (error) {
+    console.error('Error sending CSV report:', error);
+    return {
+      success: false,
+      sent: 0,
+      total: emails.length,
+      message: 'Error al enviar el reporte'
+    };
+  }
+}
