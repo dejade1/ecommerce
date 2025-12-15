@@ -10,6 +10,7 @@
  * ✅ Preferencias de usuario
  * ✅ Gestión de seguridad
  * ✅ Integración con Brevo para enviar emails de prueba
+ * ✅ Envío de reportes CSV por email
  */
 
 import React, { useState, useEffect } from 'react';
@@ -252,7 +253,6 @@ export function Settings() {
 
   /**
    * Envía un reporte CSV por email
-   * NOTA: Esta funcionalidad requiere un backend para generar los CSVs
    */
   const handleSendCSVReport = async (reportType: 'most-sold' | 'negative-diff' | 'adjustments' | 'complete') => {
     if (settings.adminEmails.length === 0) {
@@ -264,16 +264,40 @@ export function Settings() {
     setEmailStatus({ type: null, message: '' });
 
     try {
-      // TODO: Implementar generación y envío de reportes CSV
+      const response = await fetch('http://localhost:3000/api/admin/email/send-report', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reportType,
+          recipients: settings.adminEmails
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setEmailStatus({ 
+          type: 'success', 
+          message: `✅ Reporte CSV enviado exitosamente a ${settings.adminEmails.length} email(s)` 
+        });
+      } else {
+        setEmailStatus({ 
+          type: 'error', 
+          message: `❌ ${data.message || 'Error al enviar reporte'}` 
+        });
+      }
+    } catch (error) {
+      console.error('Error sending CSV report:', error);
       setEmailStatus({ 
         type: 'error', 
-        message: 'Funcionalidad de reportes CSV aún no implementada. Próximamente...' 
+        message: '❌ Error al conectar con el servidor. Verifica que el backend esté corriendo.' 
       });
-    } catch (error) {
-      setEmailStatus({ type: 'error', message: 'Error al enviar reporte' });
     } finally {
       setSendingReport(null);
-      setTimeout(() => setEmailStatus({ type: null, message: '' }), 5000);
+      setTimeout(() => setEmailStatus({ type: null, message: '' }), 8000);
     }
   };
 
