@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Minus, Save, AlertTriangle } from 'lucide-react';
+import { Plus, Minus, Save, AlertTriangle, Package } from 'lucide-react';
 
 // ==================== TIPOS ====================
 
@@ -19,15 +19,26 @@ interface Product {
   updatedAt: Date | string;
 }
 
+interface Batch {
+  id: number;
+  productId: number;
+  batchCode: string;
+  quantity: number;
+  expiryDate: string;
+  createdAt: string;
+}
+
 const API_URL = 'http://localhost:3000';
 
 // ==================== COMPONENTE ====================
 
 export function InventoryManager() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState<number>(0);
   const [formData, setFormData] = useState<{
     productId: number;
     quantity: number;
@@ -45,6 +56,15 @@ export function InventoryManager() {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (formData.productId > 0 && formData.type === 'subtract') {
+      loadProductBatches(formData.productId);
+    } else {
+      setBatches([]);
+      setSelectedBatchId(0);
+    }
+  }, [formData.productId, formData.type]);
 
   /**
    * ✅ Carga productos desde el backend
@@ -73,6 +93,24 @@ export function InventoryManager() {
     }
   }
 
+  /**
+   * ✅ Carga lotes de un producto
+   */
+  async function loadProductBatches(productId: number) {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/batches/product/${productId}`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      // Filtrar solo lotes con stock disponible
+      const availableBatches = (data.batches || []).filter((b: Batch) => b.quantity > 0);
+      setBatches(availableBatches);
+    } catch (error) {
+      console.error('Error loading batches:', error);
+      setBatches([]);
+    }
+  }
+
   const handleProductSelect = (productId: number) => {
     const selectedProduct = products.find(p => p.id === productId);
     setFormData(prev => ({
@@ -80,6 +118,7 @@ export function InventoryManager() {
       productId,
       newPrice: selectedProduct ? selectedProduct.price.toString() : ''
     }));
+    setSelectedBatchId(0);
   };
 
   /**
@@ -95,13 +134,33 @@ export function InventoryManager() {
       return;
     }
 
-    try {
-      const product = products.find(p => p.id === formData.productId);
-      if (!product) {
-        setError('Producto no encontrado');
+    const product = products.find(p => p.id === formData.productId);
+    if (!product) {
+      setError('Producto no encontrado');
+      return;
+    }
+
+    // ✅ Validar selección de lote si es retiro de stock
+    if (formData.type === 'subtract') {
+      if (batches.length > 0 && selectedBatchId === 0) {
+        setError('Este producto tiene lotes. Debe seleccionar un lote para retirar stock.');
         return;
       }
 
+      if (selectedBatchId > 0) {
+        const selectedBatch = batches.find(b => b.id === selectedBatchId);
+        if (!selectedBatch) {
+          setError('Lote seleccionado no encontrado');
+          return;
+        }
+        if (selectedBatch.quantity < formData.quantity) {
+          setError(`El lote ${selectedBatch.batchCode} solo tiene ${selectedBatch.quantity} unidades disponibles`);
+          return;
+        }
+      }
+    }
+
+    try {
       let newStock = product.stock;
 
       // Calcular nuevo stock según el tipo
@@ -146,7 +205,23 @@ export function InventoryManager() {
         throw new Error(result.message || 'Error al actualizar stock');
       }
 
-      setSuccess(`Stock actualizado correctamente: ${product.title} ahora tiene ${newStock} unidades`);
+      // ✅ Si es retiro con lote, decrementar el lote
+      if (formData.type === 'subtract' && selectedBatchId > 0) {
+        const selectedBatch = batches.find(b => b.id === selectedBatchId);
+        if (selectedBatch) {
+          await fetch(`${API_URL}/api/admin/batches/${selectedBatchId}`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              quantity: selectedBatch.quantity - formData.quantity
+            })
+          });
+          setSuccess(`Stock actualizado. Retiradas ${formData.quantity} unidades del lote ${selectedBatch.batchCode}`);
+        }
+      } else {
+        setSuccess(`Stock actualizado correctamente: ${product.title} ahora tiene ${newStock} unidades`);
+      }
 
       // Resetear formulario
       setFormData({
@@ -156,6 +231,8 @@ export function InventoryManager() {
         note: '',
         newPrice: ''
       });
+      setSelectedBatchId(0);
+      setBatches([]);
 
       // Recargar productos
       await loadProducts();
@@ -215,6 +292,18 @@ export function InventoryManager() {
     }
   }
 
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function getDaysUntilExpiry(expiryDate: string): number {
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const diffTime = expiry.getTime() - now.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -270,10 +359,41 @@ export function InventoryManager() {
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
           >
             <option value="add">Añadir al Stock</option>
-            <option value="subtract">Restar del Stock</option>
+            <option value="subtract">Restar del Stock (Retiro)</option>
             <option value="set">Establecer Stock (sobrescribir)</option>
           </select>
         </div>
+
+        {/* ✅ SELECCIÓN DE LOTE (solo si es retiro y hay lotes) */}
+        {formData.type === 'subtract' && batches.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            <div className="flex items-center mb-2">
+              <Package className="h-5 w-5 text-blue-600 mr-2" />
+              <label className="block text-sm font-medium text-blue-900">
+                Seleccionar Lote a Retirar *
+              </label>
+            </div>
+            <select
+              value={selectedBatchId}
+              onChange={(e) => setSelectedBatchId(Number(e.target.value))}
+              className="block w-full rounded-md border-blue-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              required
+            >
+              <option value={0}>-- Seleccionar lote --</option>
+              {batches.map((batch) => {
+                const daysLeft = getDaysUntilExpiry(batch.expiryDate);
+                return (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.batchCode} | Disponible: {batch.quantity} unidades | Vence: {formatDate(batch.expiryDate)} ({daysLeft} días)
+                  </option>
+                );
+              })}
+            </select>
+            <p className="mt-2 text-xs text-blue-700">
+              📍 Este producto tiene lotes. Debe seleccionar de cuál lote desea retirar el stock.
+            </p>
+          </div>
+        )}
 
         {/* Cantidad */}
         <div>
