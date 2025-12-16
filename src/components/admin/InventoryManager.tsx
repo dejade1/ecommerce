@@ -42,15 +42,17 @@ export function InventoryManager() {
   const [formData, setFormData] = useState<{
     productId: number;
     quantity: number;
-    type: 'add' | 'subtract' | 'set';
+    type: 'add' | 'subtract'; // ✅ SOLO add y subtract
     note: string;
     newPrice: string;
+    expiryDate: string; // ✅ NUEVO: para crear lote al reabastecer
   }>({
     productId: 0,
     quantity: 1,
     type: 'add',
     note: '',
-    newPrice: ''
+    newPrice: '',
+    expiryDate: '' // ✅ NUEVO
   });
 
   useEffect(() => {
@@ -122,7 +124,7 @@ export function InventoryManager() {
   };
 
   /**
-   * ✅ Actualiza stock en el backend
+   * ✅ Actualiza stock y crea lote automáticamente al reabastecer
    */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -137,6 +139,12 @@ export function InventoryManager() {
     const product = products.find(p => p.id === formData.productId);
     if (!product) {
       setError('Producto no encontrado');
+      return;
+    }
+
+    // ✅ Validar fecha de vencimiento si es reabastecimiento
+    if (formData.type === 'add' && !formData.expiryDate) {
+      setError('Debe ingresar la fecha de vencimiento del lote');
       return;
     }
 
@@ -161,66 +169,65 @@ export function InventoryManager() {
     }
 
     try {
-      let newStock = product.stock;
+      // ✅ SI ES REABASTECIMIENTO (ADD): Crear lote automáticamente
+      if (formData.type === 'add') {
+        const response = await fetch(`${API_URL}/api/admin/batches`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productId: formData.productId,
+            quantity: formData.quantity,
+            expiryDate: formData.expiryDate
+          })
+        });
 
-      // Calcular nuevo stock según el tipo
-      switch (formData.type) {
-        case 'add':
-          newStock = product.stock + formData.quantity;
-          break;
-        case 'subtract':
-          newStock = Math.max(0, product.stock - formData.quantity);
-          break;
-        case 'set':
-          newStock = formData.quantity;
-          break;
-      }
+        const result = await response.json();
 
-      // Preparar datos para actualizar
-      const updateData: any = {
-        stock: newStock
-      };
-
-      // Actualizar precio si se especificó
-      if (formData.newPrice) {
-        const newPrice = parseFloat(formData.newPrice);
-        if (!isNaN(newPrice) && newPrice >= 0) {
-          updateData.price = newPrice;
+        if (!response.ok) {
+          throw new Error(result.error || 'Error al crear lote');
         }
+
+        setSuccess(`✅ Lote ${result.batch.batchCode} creado con ${formData.quantity} unidades`);
       }
+      // ✅ SI ES RETIRO (SUBTRACT): Decrementar del lote seleccionado
+      else if (formData.type === 'subtract') {
+        if (selectedBatchId === 0) {
+          setError('Debe seleccionar un lote');
+          return;
+        }
 
-      // ✅ Enviar actualización al backend
-      const response = await fetch(`${API_URL}/api/admin/products/${formData.productId}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updateData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Error al actualizar stock');
-      }
-
-      // ✅ Si es retiro con lote, decrementar el lote
-      if (formData.type === 'subtract' && selectedBatchId > 0) {
         const selectedBatch = batches.find(b => b.id === selectedBatchId);
-        if (selectedBatch) {
-          await fetch(`${API_URL}/api/admin/batches/${selectedBatchId}`, {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              quantity: selectedBatch.quantity - formData.quantity
-            })
-          });
-          setSuccess(`Stock actualizado. Retiradas ${formData.quantity} unidades del lote ${selectedBatch.batchCode}`);
+        if (!selectedBatch) {
+          setError('Lote no encontrado');
+          return;
         }
-      } else {
-        setSuccess(`Stock actualizado correctamente: ${product.title} ahora tiene ${newStock} unidades`);
+
+        // Decrementar stock del producto
+        const updateResponse = await fetch(`${API_URL}/api/admin/products/${formData.productId}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stock: Math.max(0, product.stock - formData.quantity)
+          })
+        });
+
+        if (!updateResponse.ok) {
+          throw new Error('Error al actualizar stock del producto');
+        }
+
+        // Decrementar lote
+        await fetch(`${API_URL}/api/admin/batches/${selectedBatchId}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            quantity: selectedBatch.quantity - formData.quantity
+          })
+        });
+
+        setSuccess(`✅ Retiradas ${formData.quantity} unidades del lote ${selectedBatch.batchCode}`);
       }
 
       // Resetear formulario
@@ -229,7 +236,8 @@ export function InventoryManager() {
         quantity: 1,
         type: 'add',
         note: '',
-        newPrice: ''
+        newPrice: '',
+        expiryDate: ''
       });
       setSelectedBatchId(0);
       setBatches([]);
@@ -281,7 +289,8 @@ export function InventoryManager() {
         quantity: 1,
         type: 'add',
         note: '',
-        newPrice: ''
+        newPrice: '',
+        expiryDate: ''
       });
 
       // Recargar productos
@@ -314,7 +323,12 @@ export function InventoryManager() {
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
-      <h2 className="text-xl font-semibold mb-6">Ajuste de Inventario</h2>
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold">Ajuste de Inventario</h2>
+        <p className="text-sm text-gray-600 mt-1">
+          Reabastecer crea lotes automáticamente. Retirar stock requiere selección de lote.
+        </p>
+      </div>
 
       {error && (
         <div className="mb-4 bg-red-50 text-red-500 p-3 rounded-md text-sm">
@@ -355,14 +369,33 @@ export function InventoryManager() {
           </label>
           <select
             value={formData.type}
-            onChange={(e) => setFormData({ ...formData, type: e.target.value as 'add' | 'subtract' | 'set' })}
+            onChange={(e) => setFormData({ ...formData, type: e.target.value as 'add' | 'subtract' })}
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
           >
-            <option value="add">Añadir al Stock</option>
-            <option value="subtract">Restar del Stock (Retiro)</option>
-            <option value="set">Establecer Stock (sobrescribir)</option>
+            <option value="add">Reabastecer (Crear Lote)</option>
+            <option value="subtract">Retirar del Stock (De Lote Existente)</option>
           </select>
         </div>
+
+        {/* ✅ FECHA DE VENCIMIENTO (solo si es reabastecimiento) */}
+        {formData.type === 'add' && (
+          <div className="bg-green-50 border border-green-200 rounded-md p-4">
+            <label className="block text-sm font-medium text-green-900 mb-2">
+              Fecha de Vencimiento del Lote *
+            </label>
+            <input
+              type="date"
+              value={formData.expiryDate}
+              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+              min={new Date().toISOString().split('T')[0]}
+              className="block w-full rounded-md border-green-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+              required
+            />
+            <p className="mt-2 text-xs text-green-700">
+              📦 Se creará un nuevo lote automáticamente con código único (ej: ArrPreBl-2-16122025)
+            </p>
+          </div>
+        )}
 
         {/* ✅ SELECCIÓN DE LOTE (solo si es retiro y hay lotes) */}
         {formData.type === 'subtract' && batches.length > 0 && (
@@ -395,24 +428,32 @@ export function InventoryManager() {
           </div>
         )}
 
+        {formData.type === 'subtract' && batches.length === 0 && formData.productId > 0 && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+            <p className="text-sm text-yellow-800">
+              ⚠️ Este producto no tiene lotes disponibles. No se puede retirar stock.
+            </p>
+          </div>
+        )}
+
         {/* Cantidad */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            {formData.type === 'set' ? 'Nuevo Stock' : 'Cantidad'}
+            Cantidad
           </label>
           <div className="flex items-center space-x-2">
             <button
               type="button"
-              onClick={() => setFormData(prev => ({ ...prev, quantity: Math.max(0, prev.quantity - 1) }))}
+              onClick={() => setFormData(prev => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
               className="p-2 rounded-md bg-gray-100 hover:bg-gray-200"
             >
               <Minus className="w-4 h-4" />
             </button>
             <input
               type="number"
-              min="0"
+              min="1"
               value={formData.quantity}
-              onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+              onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
               className="block w-20 rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
             />
             <button
@@ -425,44 +466,15 @@ export function InventoryManager() {
           </div>
         </div>
 
-        {/* Nuevo Precio (Opcional) */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nuevo Precio Unitario ($) - Opcional
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={formData.newPrice}
-            onChange={(e) => setFormData({ ...formData, newPrice: e.target.value })}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
-            placeholder="Dejar vacío para mantener el precio actual"
-          />
-        </div>
-
-        {/* Nota */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Nota - Opcional
-          </label>
-          <input
-            type="text"
-            value={formData.note}
-            onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
-            placeholder="Razón del ajuste de inventario"
-          />
-        </div>
-
         {/* Botones */}
         <div className="flex gap-3">
           <button
             type="submit"
-            className="flex-1 flex items-center justify-center font-medium py-2 px-4 rounded-md bg-yellow-400 hover:bg-yellow-500 text-gray-900 transition-colors"
+            disabled={formData.type === 'subtract' && batches.length === 0}
+            className="flex-1 flex items-center justify-center font-medium py-2 px-4 rounded-md bg-yellow-400 hover:bg-yellow-500 text-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-5 h-5 mr-2" />
-            Guardar Ajuste
+            {formData.type === 'add' ? 'Reabastecer (Crear Lote)' : 'Retirar Stock'}
           </button>
 
           {formData.productId > 0 && (
