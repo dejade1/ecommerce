@@ -37,7 +37,7 @@ interface StockAdjustment {
   difference: number;
   note?: string | null;
   userId: string;
-  createdAt: string;
+  timestamp: string;
   product: {
     title: string;
   };
@@ -591,7 +591,7 @@ export function InventoryManager() {
                   return (
                     <tr key={adjustment.id}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDateTime(adjustment.createdAt)}
+                        {formatDateTime(adjustment.timestamp)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {adjustment.product.title}
