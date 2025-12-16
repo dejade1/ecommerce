@@ -37,7 +37,7 @@ import { SalesHistory } from './SalesHistory';
 import { Reports } from './Reports';
 import { Settings } from './Settings';
 import BatchManager from './BatchManager';
-import { SyncButton } from './SyncButton';
+// ❌ ELIMINADO: import { SyncButton } from './SyncButton'; - Ya no necesario sin IndexedDB
 
 // Servicios
 import { ledService } from '../../services/LedService';
@@ -255,9 +255,6 @@ export function Dashboard() {
 
             {/* Controles de la derecha */}
             <div className="flex items-center gap-2">
-              {/* Botón sincronizar lotes - Solo ADMIN */}
-              {user?.role === 'ADMIN' && <SyncButton />}
-
               {/* Botón conectar ESP32 */}
               <button
                 onClick={handleSerialConnect}
