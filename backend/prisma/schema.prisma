@@ -89,6 +89,11 @@ model Product {
   category     String?
   sales        Int      @default(0) // Total de unidades vendidas (NUNCA se resetea - para ingresos totales)
   dailySales   Int      @default(0) // Ventas diarias (se resetea al ajustar stock - para reportes diarios)
+  
+  // ✅ SISTEMA DE SLOTS (Hardware ESP32/Arduino)
+  slot         Int?     // Número de slot asignado (1, 2, 3, ...)
+  slotDistance Int?     // Distancia en centímetros que debe moverse el motor
+  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -101,13 +106,14 @@ model Product {
   @@index([category]) // Para filtrado por categoría
   @@index([stock])    // Para queries de stock bajo
   @@index([sales])    // Para reportes de productos más vendidos
+  @@index([slot])     // Para búsqueda rápida de productos por slot
 }
 
 model Batch {
   id             Int      @id @default(autoincrement())
   productId      Int
   product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  batchCode      String
+  batchCode      String   // Formato: ArrPreBl-1-15122025 (PrimerProd-SecuenciaLote-Fecha)
   quantity       Int
   expiryDate     DateTime
   createdAt      DateTime @default(now())
@@ -161,11 +167,11 @@ model StockAdjustment {
   id             Int      @id @default(autoincrement())
   productId      Int
   product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  adjustmentType String   // manual, restock, correction, damage, count
+  adjustmentType String   // manual, restock, correction, damage, count, batch (cuando se crea un lote)
   quantityBefore Int
   quantityAfter  Int
   difference     Int
-  note           String?
+  note           String?  // Para ajustes tipo 'batch', incluye el código del lote
   userId         String?
   timestamp      DateTime @default(now())
 
