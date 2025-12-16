@@ -1,124 +1,86 @@
 import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Clock, Package, DollarSign, TrendingUp, TrendingDown, Filter } from 'lucide-react';
-import { db } from '../../lib/inventory';
-import type { Order, OrderItem, Product } from '../../lib/inventory';
+import { Clock, DollarSign, Package, ShoppingCart, Filter } from 'lucide-react';
 
-interface StockMovement {
-  id?: number;
+// ==================== TIPOS ====================
+
+interface OrderItem {
+  id: number;
+  orderId: number;
   productId: number;
   quantity: number;
-  type: 'in' | 'out';
-  note?: string;
-  createdAt: Date;
+  price: number;
+  productTitle?: string;
+  productImage?: string;
 }
 
-interface SaleDetail extends Order {
-  items: (OrderItem & { product: Product | undefined })[];
-}
-
-interface Transaction {
+interface Order {
   id: number;
-  type: 'sale' | 'stock_in' | 'stock_out';
-  date: Date;
-  total?: number;
-  productName?: string;
-  quantity?: number;
-  note?: string;
-  items?: (OrderItem & { product: Product | undefined })[];
+  customerName: string;
+  customerEmail: string;
+  phone: string;
+  address: string;
+  paymentMethod: string;
+  total: number;
+  status: string;
+  createdAt: string;
+  items?: OrderItem[];
 }
 
-// Imagen SVG placeholder como data URI (no requiere conexión a internet)
+const API_URL = 'http://localhost:3000';
+
 const PLACEHOLDER_IMAGE = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIGZpbGw9IiNFNUU3RUIiLz48cGF0aCBkPSJNMjAgMTVDMTguMzQzMSAxNSAxNyAxNi4zNDMxIDE3IDE4QzE3IDE5LjY1NjkgMTguMzQzMSAyMSAyMCAyMUMyMS42NTY5IDIxIDIzIDE5LjY1NjkgMjMgMThDMjMgMTYuMzQzMSAyMS42NTY5IDE1IDIwIDE1Wk0xMyAxMkMxMi40NDc3IDEyIDEyIDEyLjQ0NzcgMTIgMTNWMjdDMTIgMjcuNTUyMyAxMi40NDc3IDI4IDEzIDI4SDI3QzI3LjU1MjMgMjggMjggMjcuNTUyMyAyOCAyN1YxM0MyOCAxMi40NDc3IDI3LjU1MjMgMTIgMjcgMTJIMTNaTTI2IDI2SDE0VjE0SDI2VjI2WiIgZmlsbD0iIzlDQTNCMCIvPjwvc3ZnPg==';
 
+// ==================== COMPONENTE ====================
+
 export function SalesHistory() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterType, setFilterType] = useState<'all' | 'sale' | 'stock_in' | 'stock_out'>('all');
-  const [filterProduct, setFilterProduct] = useState<number>(0);
+  const [error, setError] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [products, setProducts] = useState<Product[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    loadTransactions();
+    loadOrders();
   }, []);
 
-  const loadTransactions = async () => {
+  /**
+   * ✅ Carga órdenes desde el backend
+   */
+  const loadOrders = async () => {
     try {
-      const [orders, orderItems, stockMovements, productsData] = await Promise.all([
-        db.orders.toArray(),
-        db.orderItems.toArray(),
-        db.stockMovements.toArray(),
-        db.products.toArray()
-      ]);
+      const response = await fetch(`${API_URL}/api/orders`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
 
-      setProducts(productsData);
-
-      const allTransactions: Transaction[] = [];
-
-      // Agregar ventas
-      for (const order of orders) {
-        const items = orderItems
-          .filter(item => item.orderId === order.id)
-          .map(item => ({
-            ...item,
-            product: productsData.find(p => p.id === item.productId)
-          }));
-
-        allTransactions.push({
-          id: order.id!,
-          type: 'sale',
-          date: new Date(order.createdAt),
-          total: order.total,
-          items
-        });
+      if (!response.ok) {
+        throw new Error('Error al cargar órdenes');
       }
 
-      // Agregar movimientos de stock
-      for (const movement of stockMovements) {
-        const product = productsData.find(p => p.id === movement.productId);
-        allTransactions.push({
-          id: movement.id!,
-          type: movement.type === 'in' ? 'stock_in' : 'stock_out',
-          date: new Date(movement.createdAt),
-          productName: product?.title || 'Producto desconocido',
-          quantity: Math.abs(movement.quantity),
-          note: movement.note
-        });
-      }
-
-      // Ordenar por fecha más reciente
-      allTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
-
-      setTransactions(allTransactions);
+      const data = await response.json();
+      setOrders(data.orders || []);
     } catch (error) {
-      console.error('Error al cargar transacciones:', error);
+      console.error('Error loading orders:', error);
+      setError('Error al cargar órdenes');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredTransactions = transactions.filter(transaction => {
-    // Filtrar por tipo
-    if (filterType !== 'all' && transaction.type !== filterType) {
-      return false;
-    }
-
-    // Filtrar por producto
-    if (filterProduct !== 0) {
-      if (transaction.type === 'sale') {
-        // Para ventas, buscar en items
-        const hasProduct = transaction.items?.some(item => item.productId === filterProduct);
-        if (!hasProduct) return false;
-      } else {
-        // Para movimientos de stock, verificar productId directamente
-        const movement = transactions.find(t => t.id === transaction.id);
-        // Necesitamos buscar en stockMovements para obtener productId
-        // Por ahora comparamos por nombre de producto
-        const product = products.find(p => p.id === filterProduct);
-        if (product && transaction.productName !== product.title) return false;
+  // Filtrar órdenes
+  const filteredOrders = orders.filter(order => {
+    // Filtrar por nombre de cliente
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      if (!order.customerName.toLowerCase().includes(searchLower) &&
+          !order.customerEmail.toLowerCase().includes(searchLower)) {
+        return false;
       }
     }
 
@@ -126,29 +88,23 @@ export function SalesHistory() {
     if (dateFrom) {
       const fromDate = new Date(dateFrom);
       fromDate.setHours(0, 0, 0, 0);
-      if (transaction.date < fromDate) return false;
+      if (new Date(order.createdAt) < fromDate) return false;
     }
 
     if (dateTo) {
       const toDate = new Date(dateTo);
       toDate.setHours(23, 59, 59, 999);
-      if (transaction.date > toDate) return false;
+      if (new Date(order.createdAt) > toDate) return false;
     }
 
     return true;
   });
 
-  const totalSales = filteredTransactions
-    .filter(t => t.type === 'sale')
-    .reduce((sum, t) => sum + (t.total || 0), 0);
-
-  const totalStockIn = filteredTransactions
-    .filter(t => t.type === 'stock_in')
-    .reduce((sum, t) => sum + (t.quantity || 0), 0);
-
-  const totalStockOut = filteredTransactions
-    .filter(t => t.type === 'stock_out')
-    .reduce((sum, t) => sum + (t.quantity || 0), 0);
+  const totalSales = filteredOrders.reduce((sum, order) => sum + order.total, 0);
+  const totalOrders = filteredOrders.length;
+  const totalItems = filteredOrders.reduce((sum, order) => {
+    return sum + (order.items?.reduce((itemSum, item) => itemSum + item.quantity, 0) || 0);
+  }, 0);
 
   if (loading) {
     return (
@@ -182,12 +138,12 @@ export function SalesHistory() {
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <TrendingUp className="h-6 w-6 text-blue-600" />
+                <ShoppingCart className="h-6 w-6 text-blue-600" />
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Entradas de Stock</dt>
-                  <dd className="text-lg font-medium text-gray-900">{totalStockIn} unidades</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Número de Órdenes</dt>
+                  <dd className="text-lg font-medium text-gray-900">{totalOrders}</dd>
                 </dl>
               </div>
             </div>
@@ -198,12 +154,12 @@ export function SalesHistory() {
           <div className="p-5">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <TrendingDown className="h-6 w-6 text-orange-600" />
+                <Package className="h-6 w-6 text-orange-600" />
               </div>
               <div className="ml-5 w-0 flex-1">
                 <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">Salidas de Stock</dt>
-                  <dd className="text-lg font-medium text-gray-900">{totalStockOut} unidades</dd>
+                  <dt className="text-sm font-medium text-gray-500 truncate">Productos Vendidos</dt>
+                  <dd className="text-lg font-medium text-gray-900">{totalItems} unidades</dd>
                 </dl>
               </div>
             </div>
@@ -218,39 +174,18 @@ export function SalesHistory() {
           <h3 className="text-lg font-medium text-gray-900">Filtros</h3>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tipo de Transacción
+              Buscar Cliente
             </label>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value as any)}
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Nombre o email..."
               className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
-            >
-              <option value="all">Todas</option>
-              <option value="sale">Ventas</option>
-              <option value="stock_in">Entradas de Stock</option>
-              <option value="stock_out">Salidas de Stock</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Producto
-            </label>
-            <select
-              value={filterProduct}
-              onChange={(e) => setFilterProduct(Number(e.target.value))}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 sm:text-sm"
-            >
-              <option value={0}>Todos los productos</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.title}
-                </option>
-              ))}
-            </select>
+            />
           </div>
 
           <div>
@@ -278,12 +213,11 @@ export function SalesHistory() {
           </div>
         </div>
 
-        {(filterType !== 'all' || filterProduct !== 0 || dateFrom || dateTo) && (
+        {(searchTerm || dateFrom || dateTo) && (
           <div className="mt-4">
             <button
               onClick={() => {
-                setFilterType('all');
-                setFilterProduct(0);
+                setSearchTerm('');
                 setDateFrom('');
                 setDateTo('');
               }}
@@ -295,146 +229,119 @@ export function SalesHistory() {
         )}
       </div>
 
-      {/* Lista de transacciones */}
+      {/* Lista de Órdenes */}
       <div className="bg-white shadow rounded-lg">
         <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
           <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Historial de Transacciones ({filteredTransactions.length})
+            Historial de Ventas ({filteredOrders.length})
           </h3>
         </div>
 
-        {filteredTransactions.length === 0 ? (
+        {error && (
+          <div className="p-4 bg-red-50 text-red-500 text-sm">
+            {error}
+          </div>
+        )}
+
+        {filteredOrders.length === 0 ? (
           <div className="text-center py-12">
             <Package className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay transacciones</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay ventas</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {transactions.length === 0
-                ? 'Las transacciones aparecerán aquí cuando se realicen.'
-                : 'No hay transacciones que coincidan con los filtros seleccionados.'}
+              {orders.length === 0
+                ? 'Las ventas aparecerán aquí cuando se realicen.'
+                : 'No hay ventas que coincidan con los filtros seleccionados.'}
             </p>
           </div>
         ) : (
           <ul role="list" className="divide-y divide-gray-200">
-            {filteredTransactions.map((transaction, index) => (
-              <li key={`${transaction.type}-${transaction.id}-${index}`}>
+            {filteredOrders.map((order) => (
+              <li key={order.id}>
                 <div className="px-4 py-4 sm:px-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      {transaction.type === 'sale' && (
-                        <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                            <DollarSign className="h-6 w-6 text-green-600" />
-                          </div>
+                      <div className="flex-shrink-0">
+                        <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                          <ShoppingCart className="h-6 w-6 text-green-600" />
                         </div>
-                      )}
-                      {transaction.type === 'stock_in' && (
-                        <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                            <TrendingUp className="h-6 w-6 text-blue-600" />
-                          </div>
-                        </div>
-                      )}
-                      {transaction.type === 'stock_out' && (
-                        <div className="flex-shrink-0">
-                          <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
-                            <TrendingDown className="h-6 w-6 text-orange-600" />
-                          </div>
-                        </div>
-                      )}
+                      </div>
 
                       <div>
                         <p className="text-sm font-medium text-gray-900">
-                          {transaction.type === 'sale' && 'Venta'}
-                          {transaction.type === 'stock_in' && 'Entrada de Stock'}
-                          {transaction.type === 'stock_out' && 'Salida de Stock'}
+                          Orden #{order.id}
                         </p>
                         <div className="flex items-center mt-1">
                           <Clock className="h-4 w-4 text-gray-400 mr-1" />
                           <p className="text-sm text-gray-500">
-                            {format(transaction.date, "d 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
+                            {format(new Date(order.createdAt), "d 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      {transaction.type === 'sale' && (
-                        <p className="text-sm font-semibold text-green-600">
-                          ${transaction.total?.toFixed(2)}
-                        </p>
-                      )}
-                      {transaction.type === 'stock_in' && (
-                        <p className="text-sm font-semibold text-blue-600">
-                          +{transaction.quantity} unidades
-                        </p>
-                      )}
-                      {transaction.type === 'stock_out' && (
-                        <p className="text-sm font-semibold text-orange-600">
-                          -{transaction.quantity} unidades
-                        </p>
-                      )}
+                      <p className="text-sm font-semibold text-green-600">
+                        ${order.total.toFixed(2)}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {order.paymentMethod}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Detalles de la transacción */}
-                  <div className="mt-4">
-                    {transaction.type === 'sale' && transaction.items && (
-                      <div className="bg-gray-50 rounded-md p-3">
-                        <p className="text-xs font-medium text-gray-700 mb-2">Productos:</p>
-                        <div className="space-y-2">
-                          {transaction.items.map((item) => {
-                            const product = item.product;
-                            const productTitle = product?.title || 'Producto eliminado';
-                            const productImage = product?.image || PLACEHOLDER_IMAGE;
-                            
-                            return (
-                              <div key={item.id} className="flex justify-between items-center text-sm">
-                                <div className="flex items-center">
-                                  <img
-                                    src={productImage}
-                                    alt={productTitle}
-                                    className="h-6 w-6 rounded-full object-cover mr-2"
-                                    onError={(e) => {
-                                      const target = e.target as HTMLImageElement;
-                                      target.src = PLACEHOLDER_IMAGE;
-                                    }}
-                                  />
-                                  <span className={`${product ? 'text-gray-900' : 'text-gray-500 italic'}`}>
-                                    {productTitle}
-                                  </span>
-                                </div>
-                                <div className="flex items-center space-x-3">
-                                  <span className="text-gray-500">
-                                    {item.quantity} × ${item.price.toFixed(2)}
-                                  </span>
-                                  <span className="font-medium text-gray-900">
-                                    ${(item.quantity * item.price).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                  {/* Información del Cliente */}
+                  <div className="mt-4 bg-gray-50 rounded-md p-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs font-medium text-gray-700">Cliente:</p>
+                        <p className="text-sm text-gray-900 mt-1">{order.customerName}</p>
+                        <p className="text-xs text-gray-500 mt-1">{order.customerEmail}</p>
                       </div>
-                    )}
-
-                    {(transaction.type === 'stock_in' || transaction.type === 'stock_out') && (
-                      <div className="bg-gray-50 rounded-md p-3">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-xs font-medium text-gray-700">Producto:</p>
-                            <p className="text-sm text-gray-900 mt-1">{transaction.productName}</p>
-                          </div>
-                          {transaction.note && (
-                            <div className="text-right">
-                              <p className="text-xs font-medium text-gray-700">Nota:</p>
-                              <p className="text-sm text-gray-600 mt-1">{transaction.note}</p>
-                            </div>
-                          )}
-                        </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-700">Teléfono:</p>
+                        <p className="text-sm text-gray-900 mt-1">{order.phone}</p>
                       </div>
-                    )}
+                    </div>
+                    <div className="mt-2">
+                      <p className="text-xs font-medium text-gray-700">Dirección de Entrega:</p>
+                      <p className="text-sm text-gray-900 mt-1">{order.address}</p>
+                    </div>
                   </div>
+
+                  {/* Productos de la Orden */}
+                  {order.items && order.items.length > 0 && (
+                    <div className="mt-4 bg-blue-50 rounded-md p-3">
+                      <p className="text-xs font-medium text-gray-700 mb-2">Productos:</p>
+                      <div className="space-y-2">
+                        {order.items.map((item) => (
+                          <div key={item.id} className="flex justify-between items-center text-sm">
+                            <div className="flex items-center">
+                              <img
+                                src={item.productImage || PLACEHOLDER_IMAGE}
+                                alt={item.productTitle || 'Producto'}
+                                className="h-6 w-6 rounded-full object-cover mr-2"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.src = PLACEHOLDER_IMAGE;
+                                }}
+                              />
+                              <span className="text-gray-900">
+                                {item.productTitle || `Producto #${item.productId}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-3">
+                              <span className="text-gray-500">
+                                {item.quantity} × ${item.price.toFixed(2)}
+                              </span>
+                              <span className="font-medium text-gray-900">
+                                ${(item.quantity * item.price).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
