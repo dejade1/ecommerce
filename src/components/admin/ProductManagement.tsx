@@ -16,6 +16,8 @@ interface Product {
   rating: number;
   category?: string | null;
   sales: number;
+  slot?: number | null;          // ✅ NUEVO
+  slotDistance?: number | null;  // ✅ NUEVO
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -42,7 +44,9 @@ export function ProductManagement() {
     unit: '',
     image: '',
     rating: '5.0',
-    category: ''
+    category: '',
+    slot: '',          // ✅ NUEVO
+    slotDistance: ''   // ✅ NUEVO
   });
 
   useEffect(() => {
@@ -116,6 +120,8 @@ export function ProductManagement() {
       const price = parseFloat(newProduct.price);
       const stock = parseInt(newProduct.stock);
       const rating = parseFloat(newProduct.rating);
+      const slot = newProduct.slot ? parseInt(newProduct.slot) : null;
+      const slotDistance = newProduct.slotDistance ? parseInt(newProduct.slotDistance) : null;
 
       if (price <= 0) {
         setError('El precio debe ser mayor que 0');
@@ -144,7 +150,9 @@ export function ProductManagement() {
         unit: newProduct.unit,
         image: newProduct.image.trim() || null,
         rating,
-        category: newProduct.category || null
+        category: newProduct.category || null,
+        slot,
+        slotDistance
       };
 
       // ✅ Enviar al backend
@@ -174,7 +182,9 @@ export function ProductManagement() {
         unit: '',
         image: '',
         rating: '5.0',
-        category: ''
+        category: '',
+        slot: '',
+        slotDistance: ''
       });
       setImageFile(null);
       setImagePreview('');
@@ -290,7 +300,7 @@ export function ProductManagement() {
                 </div>
 
                 {/* Unidad */}
-                <div className="col-span-6 sm:col-span-3">
+                <div className="col-span-6 sm:col-span-2">
                   <label htmlFor="unit" className="block text-sm font-medium text-gray-700">
                     Unidad de Medida *
                   </label>
@@ -314,7 +324,7 @@ export function ProductManagement() {
                 </div>
 
                 {/* Categoría */}
-                <div className="col-span-6 sm:col-span-3">
+                <div className="col-span-6 sm:col-span-2">
                   <label htmlFor="category" className="block text-sm font-medium text-gray-700">
                     Categoría
                   </label>
@@ -339,6 +349,38 @@ export function ProductManagement() {
                     <option value="Limpieza">Limpieza</option>
                     <option value="General">General</option>
                   </select>
+                </div>
+
+                {/* ✅ NUEVO: Slot */}
+                <div className="col-span-6 sm:col-span-2">
+                  <label htmlFor="slot" className="block text-sm font-medium text-gray-700">
+                    Slot (Hardware)
+                  </label>
+                  <input
+                    type="number"
+                    id="slot"
+                    value={newProduct.slot}
+                    onChange={(e) => setNewProduct({ ...newProduct, slot: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    placeholder="1, 2, 3..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Número de slot ESP32/Arduino</p>
+                </div>
+
+                {/* ✅ NUEVO: Distancia del Slot */}
+                <div className="col-span-6 sm:col-span-3">
+                  <label htmlFor="slotDistance" className="block text-sm font-medium text-gray-700">
+                    Distancia del Motor (cm)
+                  </label>
+                  <input
+                    type="number"
+                    id="slotDistance"
+                    value={newProduct.slotDistance}
+                    onChange={(e) => setNewProduct({ ...newProduct, slotDistance: e.target.value })}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    placeholder="10, 20, 30..."
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Centímetros que debe moverse el motor</p>
                 </div>
 
                 {/* Imagen */}
@@ -456,6 +498,12 @@ export function ProductManagement() {
                             Categoría
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Slot
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Dist. (cm)
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Ventas
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -493,6 +541,24 @@ export function ProductManagement() {
                               <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                 {product.category || 'General'}
                               </span>
+                            </td>
+                            {/* ✅ NUEVO: Mostrar Slot */}
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {product.slot ? (
+                                <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                  #{product.slot}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">-</span>
+                              )}
+                            </td>
+                            {/* ✅ NUEVO: Mostrar Distancia */}
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {product.slotDistance ? (
+                                <span>{product.slotDistance} cm</span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">-</span>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {product.sales || 0} unidades
