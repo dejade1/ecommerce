@@ -22,7 +22,8 @@ import {
   Settings as SettingsIcon,
   Archive,
   LogOut,
-  ClipboardList
+  ClipboardList,
+  ShoppingCart
 } from 'lucide-react';
 
 // Componentes de pestañas (✅ REFACTORIZADOS)
@@ -30,10 +31,10 @@ import { UserManagement } from './UserManagement';
 import { InventoryManager } from './InventoryManager';
 import { ProductManagement } from './ProductManagement';
 import { InventoryTable } from './InventoryTable';
+import { SalesHistory } from './SalesHistory';
 import { Settings } from './Settings';
 
-// ❌ Componentes pendientes de refactoring (comentados temporalmente)
-// import { SalesHistory } from './SalesHistory';
+// ❌ Componentes pendientes de refactoring (deshabilitados)
 // import { Reports } from './Reports';
 // import BatchManager from './BatchManager';
 
@@ -41,8 +42,8 @@ import { Settings } from './Settings';
 import { ledService } from '../../services/LedService';
 
 // Tipo de pestaña
-type TabType = 'inventory' | 'products' | 'stock' | 'users' | 'settings';
-// ❌ Deshabilitados: 'orders' | 'batches' | 'reports'
+type TabType = 'inventory' | 'products' | 'stock' | 'orders' | 'users' | 'settings';
+// ❌ Deshabilitados: 'batches' | 'reports'
 
 // Definición de pestañas
 interface TabConfig {
@@ -84,6 +85,13 @@ export function Dashboard() {
       icon: Archive,
       component: <InventoryManager />,
       allowedRoles: ['ADMIN', 'USER'] // ✅ ADMIN y USER pueden ver
+    },
+    {
+      id: 'orders',
+      label: 'Órdenes y Ventas',
+      icon: ShoppingCart,
+      component: <SalesHistory />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
       id: 'users',
