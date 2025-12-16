@@ -16,8 +16,8 @@ interface Product {
   rating: number;
   category?: string | null;
   sales: number;
-  slot?: number | null;          // ✅ NUEVO
-  slotDistance?: number | null;  // ✅ NUEVO
+  slot?: number | null;          // ✅ Campo de slot
+  slotDistance?: number | null;  // ✅ Campo de distancia del motor
   createdAt: Date | string;
   updatedAt: Date | string;
 }
@@ -45,9 +45,9 @@ export function ProductManagement() {
     image: '',
     rating: '5.0',
     category: '',
-    slot: '',          // ✅ NUEVO
-    slotDistance: '',  // ✅ NUEVO
-    expiryDate: ''     // ✅ NUEVO: Fecha de vencimiento del primer lote
+    slot: '',          // ✅ Slot del hardware
+    slotDistance: '',  // ✅ Distancia del motor
+    expiryDate: ''     // ✅ Fecha de vencimiento del primer lote
   });
 
   useEffect(() => {
@@ -136,7 +136,7 @@ export function ProductManagement() {
         return;
       }
 
-      // ✅ NUEVO: Validar fecha de vencimiento si hay stock inicial
+      // ✅ Validar fecha de vencimiento si hay stock inicial
       if (stock > 0 && !newProduct.expiryDate) {
         setError('Debe ingresar la fecha de vencimiento para el stock inicial');
         setLoading(false);
@@ -159,9 +159,9 @@ export function ProductManagement() {
         image: newProduct.image.trim() || null,
         rating,
         category: newProduct.category || null,
-        slot,
-        slotDistance,
-        expiryDate: newProduct.expiryDate || null  // ✅ NUEVO
+        slot,           // ✅ Enviar slot al backend
+        slotDistance,   // ✅ Enviar slotDistance al backend
+        expiryDate: newProduct.expiryDate || null
       };
 
       // ✅ Enviar al backend
@@ -194,7 +194,7 @@ export function ProductManagement() {
         category: '',
         slot: '',
         slotDistance: '',
-        expiryDate: ''  // ✅ NUEVO
+        expiryDate: ''
       });
       setImageFile(null);
       setImagePreview('');
@@ -298,7 +298,7 @@ export function ProductManagement() {
                 {/* Stock */}
                 <div className="col-span-6 sm:col-span-3">
                   <label htmlFor="stock" className="block text-sm font-medium text-gray-700">
-                    Stock Inicial *
+                    Stock Actual (unidades físicas) *
                   </label>
                   <input
                     type="number"
@@ -309,7 +309,7 @@ export function ProductManagement() {
                   />
                 </div>
 
-                {/* ✅ NUEVO: Fecha de Vencimiento (solo si stock > 0) */}
+                {/* ✅ Fecha de Vencimiento (solo si stock > 0) */}
                 {parseInt(newProduct.stock) > 0 && (
                   <div className="col-span-6">
                     <div className="bg-green-50 border border-green-200 rounded-md p-4">
@@ -384,7 +384,7 @@ export function ProductManagement() {
                   </select>
                 </div>
 
-                {/* ✅ NUEVO: Slot */}
+                {/* ✅ Slot */}
                 <div className="col-span-6 sm:col-span-2">
                   <label htmlFor="slot" className="block text-sm font-medium text-gray-700">
                     Slot (Hardware)
@@ -400,7 +400,7 @@ export function ProductManagement() {
                   <p className="mt-1 text-xs text-gray-500">Número de slot ESP32/Arduino</p>
                 </div>
 
-                {/* ✅ NUEVO: Distancia del Slot */}
+                {/* ✅ Distancia del Slot */}
                 <div className="col-span-6 sm:col-span-3">
                   <label htmlFor="slotDistance" className="block text-sm font-medium text-gray-700">
                     Distancia del Motor (cm)
@@ -575,7 +575,7 @@ export function ProductManagement() {
                                 {product.category || 'General'}
                               </span>
                             </td>
-                            {/* ✅ NUEVO: Mostrar Slot */}
+                            {/* ✅ Mostrar Slot */}
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {product.slot ? (
                                 <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
@@ -585,7 +585,7 @@ export function ProductManagement() {
                                 <span className="text-gray-400 text-xs">-</span>
                               )}
                             </td>
-                            {/* ✅ NUEVO: Mostrar Distancia */}
+                            {/* ✅ Mostrar Distancia */}
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {product.slotDistance ? (
                                 <span>{product.slotDistance} cm</span>
