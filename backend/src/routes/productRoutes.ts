@@ -299,7 +299,7 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
 
 /**
  * DELETE /api/admin/products/:id
- * Elimina un producto
+ * Elimina un producto y todas sus relaciones
  */
 router.delete('/products/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -324,7 +324,24 @@ router.delete('/products/:id', authenticateToken, requireAdmin, async (req: Requ
       });
     }
 
-    // Eliminar producto (Prisma eliminará automáticamente los batches y ajustes relacionados por onDelete: Cascade)
+    // ✅ Eliminar todas las relaciones antes de eliminar el producto
+    
+    // 1. Eliminar OrderItems relacionados
+    await prisma.orderItem.deleteMany({
+      where: { productId: productId }
+    });
+
+    // 2. Eliminar StockAdjustments relacionados
+    await prisma.stockAdjustment.deleteMany({
+      where: { productId: productId }
+    });
+
+    // 3. Eliminar Batches relacionados
+    await prisma.batch.deleteMany({
+      where: { productId: productId }
+    });
+
+    // 4. Finalmente eliminar el producto
     await prisma.product.delete({
       where: { id: productId }
     });
@@ -343,6 +360,7 @@ router.delete('/products/:id', authenticateToken, requireAdmin, async (req: Requ
     });
   }
 });
+
 
 /**
  * PATCH /api/admin/:id/sales (PÚBLICA para permitir sincronización desde checkout)
