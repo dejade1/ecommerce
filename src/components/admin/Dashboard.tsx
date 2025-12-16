@@ -10,6 +10,7 @@
  * ✅ Control de permisos por rol (ADMIN, USER, CLIENT)
  * ✅ Diseño responsivo
  * ✅ USER solo ve "Ajustes de Stock"
+ * ✅ TODAS LAS PESTAÑAS REFACTORIZADAS
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,28 +23,27 @@ import {
   Settings as SettingsIcon,
   Archive,
   LogOut,
-  ClipboardList,
-  ShoppingCart
+  BarChart3,
+  ShoppingCart,
+  FileBarChart,
+  Layers
 } from 'lucide-react';
 
-// Componentes de pestañas (✅ REFACTORIZADOS)
+// ✅ COMPONENTES COMPLETAMENTE REFACTORIZADOS
 import { UserManagement } from './UserManagement';
 import { InventoryManager } from './InventoryManager';
 import { ProductManagement } from './ProductManagement';
 import { InventoryTable } from './InventoryTable';
 import { SalesHistory } from './SalesHistory';
 import { Settings } from './Settings';
-
-// ❌ Componentes pendientes de refactoring (deshabilitados)
-// import { Reports } from './Reports';
-// import BatchManager from './BatchManager';
+import { Reports } from './Reports';
+import BatchManager from './BatchManager';
 
 // Servicios
 import { ledService } from '../../services/LedService';
 
 // Tipo de pestaña
-type TabType = 'inventory' | 'products' | 'stock' | 'orders' | 'users' | 'settings';
-// ❌ Deshabilitados: 'batches' | 'reports'
+type TabType = 'inventory' | 'products' | 'stock' | 'orders' | 'batches' | 'reports' | 'users' | 'settings';
 
 // Definición de pestañas
 interface TabConfig {
@@ -68,7 +68,7 @@ export function Dashboard() {
     {
       id: 'inventory',
       label: 'Control de Inventario',
-      icon: ClipboardList,
+      icon: BarChart3,
       component: <InventoryTable />,
       allowedRoles: ['ADMIN'] // Solo ADMIN
     },
@@ -91,6 +91,20 @@ export function Dashboard() {
       label: 'Órdenes y Ventas',
       icon: ShoppingCart,
       component: <SalesHistory />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
+    },
+    {
+      id: 'batches',
+      label: 'Gestión de Lotes',
+      icon: Layers,
+      component: <BatchManager />,
+      allowedRoles: ['ADMIN'] // Solo ADMIN
+    },
+    {
+      id: 'reports',
+      label: 'Reportes',
+      icon: FileBarChart,
+      component: <Reports />,
       allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
