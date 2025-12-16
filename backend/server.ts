@@ -8,6 +8,7 @@
  * ✅ Endpoint para actualizar puntos de lealtad
  * ✅ Endpoint /api/admin/settings para guardar configuración
  * ✅ Endpoint /api/admin/products para gestionar productos
+ * ✅ Crear primer lote automáticamente al crear producto
  * 
  * CARACTERÍSTICAS DE SEGURIDAD:
  * ✅ Autenticación JWT con httpOnly cookies
@@ -31,6 +32,14 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import { body, validationResult } from 'express-validator';
 import { PrismaClient } from '@prisma/client';
+import {
+  createBatch,
+  consumeBatchesFIFO,
+  getExpiringBatches,
+  getProductBatches,
+  getBatchStockSummary,
+  deleteBatch
+} from './src/services/batch.service';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -665,10 +674,11 @@ app.get('/api/admin/products', authenticateToken, async (req: AuthRequest, res: 
 /**
  * POST /api/admin/products
  * Crea un nuevo producto (solo admin)
+ * ✅ ACTUALIZADO: Crea primer lote automáticamente si tiene stock
  */
 app.post('/api/admin/products', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
-        const { title, description, price, stock, unit, image, rating, category } = req.body;
+        const { title, description, price, stock, unit, image, rating, category, slot, slotDistance } = req.body;
 
         // Validaciones
         if (!title || !price || stock === undefined || !unit) {
@@ -695,15 +705,32 @@ app.post('/api/admin/products', authenticateToken, requireAdmin, async (req: Aut
                 image: image || null,
                 rating: rating || 5.0,
                 category: category || 'General',
+                slot: slot || null,
+                slotDistance: slotDistance || null,
                 sales: 0
             }
         });
 
         console.log(`[PRODUCT] New product created: ${title} (ID: ${product.id}) by ${req.user?.username}`);
 
+        // ✅ CREAR PRIMER LOTE AUTOMÁTICAMENTE si tiene stock inicial
+        if (stock > 0) {
+            try {
+                // Fecha de vencimiento: 1 año desde hoy por defecto
+                const expiryDate = new Date();
+                expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+
+                await createBatch(product.id, stock, expiryDate, req.user?.username);
+                console.log(`[BATCH] Primer lote creado automáticamente para: ${product.title}`);
+            } catch (batchError) {
+                console.warn(`[BATCH] No se pudo crear lote inicial: ${batchError}`);
+                // No fallar la creación del producto si falla el lote
+            }
+        }
+
         res.status(201).json({
             success: true,
-            message: `Producto "${title}" creado exitosamente`,
+            message: `Producto "${title}" creado exitosamente${stock > 0 ? ' con primer lote automático' : ''}`,
             product
         });
 
@@ -720,7 +747,7 @@ app.post('/api/admin/products', authenticateToken, requireAdmin, async (req: Aut
 app.put('/api/admin/products/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
         const productId = parseInt(req.params.id, 10);
-        const { title, description, price, stock, unit, image, rating, category } = req.body;
+        const { title, description, price, stock, unit, image, rating, category, slot, slotDistance } = req.body;
 
         // Verificar que el producto existe
         const existingProduct = await prisma.product.findUnique({
@@ -742,7 +769,9 @@ app.put('/api/admin/products/:id', authenticateToken, requireAdmin, async (req: 
                 unit: unit || existingProduct.unit,
                 image: image !== undefined ? image : existingProduct.image,
                 rating: rating || existingProduct.rating,
-                category: category || existingProduct.category
+                category: category || existingProduct.category,
+                slot: slot !== undefined ? slot : existingProduct.slot,
+                slotDistance: slotDistance !== undefined ? slotDistance : existingProduct.slotDistance
             }
         });
 
@@ -850,6 +879,7 @@ app.listen(PORT, () => {
     console.log(`🎆 Loyalty points system enabled`);
     console.log(`⚙️  Settings API enabled`);
     console.log(`📦 Products API enabled`);
+    console.log(`📦 Batches API enabled (FIFO system)`);
 });
 
 // Manejo de cierre graceful
