@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAdmin } from '../middleware/auth';
 import fs from 'fs/promises';
 import path from 'path';
+import { restartReportScheduler } from '../services/reportScheduler';
 
 const router = Router();
 
@@ -76,6 +77,11 @@ router.post('/settings', requireAdmin, async (req: Request, res: Response) => {
     await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf-8');
 
     console.log('✅ Settings guardados correctamente');
+
+    // Reiniciar el scheduler si se modificó la configuración de reportes automáticos
+    if (settings.autoReportEnabled !== undefined || settings.autoReportTime !== undefined) {
+      restartReportScheduler();
+    }
 
     res.json({
       success: true,

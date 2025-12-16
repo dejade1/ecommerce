@@ -388,9 +388,10 @@ export function Settings() {
                   onChange={(e) => updateSetting('timezone', e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="America/Mexico_City">Ciudad de México</option>
-                  <option value="America/New_York">Nueva York</option>
-                  <option value="Europe/Madrid">Madrid</option>
+                  <option value="America/Mexico_City">Ciudad de México (GMT-6)</option>
+                  <option value="America/Guayaquil">Quito, Ecuador (GMT-5)</option>
+                  <option value="America/New_York">Nueva York (GMT-5)</option>
+                  <option value="Europe/Madrid">Madrid (GMT+1)</option>
                 </select>
               </div>
             </div>

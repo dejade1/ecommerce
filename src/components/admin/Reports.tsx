@@ -58,6 +58,7 @@ export function Reports() {
     averageOrderValue: 0
   });
   const [productDifferences, setProductDifferences] = useState<ProductDifference[]>([]);
+  const [productPositiveDifferences, setProductPositiveDifferences] = useState<ProductDifference[]>([]);
   const [recentAdjustments, setRecentAdjustments] = useState<AdjustmentWithProduct[]>([]);
 
   useEffect(() => {
@@ -201,7 +202,7 @@ export function Reports() {
       });
 
       // Calcular diferencias de stock
-      const differences: ProductDifference[] = products
+      const allDifferences: ProductDifference[] = products
         .map(product => {
           // Si initialStock no está definido, usar el stock actual como inicial
           // Esto significa que el producto fue creado sin un stock inicial registrado
@@ -226,11 +227,19 @@ export function Reports() {
             difference,
             status
           };
-        })
-        .filter(d => d.difference < 0) // Solo mostrar productos con diferencia negativa
+        });
+
+      // Separar diferencias negativas y positivas
+      const negativeDifferences = allDifferences
+        .filter(d => d.difference < 0)
         .sort((a, b) => a.difference - b.difference); // Más negativo primero
 
-      setProductDifferences(differences);
+      const positiveDifferences = allDifferences
+        .filter(d => d.difference > 0)
+        .sort((a, b) => b.difference - a.difference); // Más positivo primero
+
+      setProductDifferences(negativeDifferences);
+      setProductPositiveDifferences(positiveDifferences);
 
       // Cargar historial de ajustes (últimos 30 días)
       const adjustments = await getRecentAdjustments(30);
@@ -283,7 +292,7 @@ export function Reports() {
   };
 
   /**
-   * Exporta diferencias de stock a CSV
+   * Exporta diferencias negativas de stock a CSV
    */
   const exportDifferencesCSV = () => {
     let csvContent = 'Producto,Stock Inicial,Stock Actual,Diferencia,Estado\n';
@@ -295,7 +304,23 @@ export function Reports() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `diferencias_stock_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `diferencias_negativas_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
+
+  /**
+   * Exporta diferencias positivas de stock a CSV
+   */
+  const exportPositiveDifferencesCSV = () => {
+    let csvContent = 'Producto,Stock Inicial,Stock Actual,Diferencia (Reabastecimiento)\n';
+    productPositiveDifferences.forEach(diff => {
+      csvContent += `"${diff.name}",${diff.initialStock},${diff.currentStock},+${diff.difference}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `diferencias_positivas_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
 
@@ -581,6 +606,78 @@ export function Reports() {
                           : 'bg-orange-100 text-orange-800'
                       }`}>
                         {diff.status === 'critical' ? 'Crítico' : 'Requiere atención'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Productos con Diferencia Positiva (Reabastecimiento) */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="text-green-500" />
+            <h3 className="text-lg font-semibold text-gray-900">Productos con Diferencia Positiva (Reabastecimiento)</h3>
+          </div>
+          <button
+            onClick={exportPositiveDifferencesCSV}
+            disabled={productPositiveDifferences.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            <Download size={18} />
+            Exportar CSV
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Cargando datos...</p>
+          </div>
+        ) : productPositiveDifferences.length === 0 ? (
+          <div className="text-center py-12">
+            <TrendingUp size={48} className="mx-auto text-gray-400 mb-4" />
+            <p className="text-gray-600">No hay productos con diferencia positiva</p>
+            <p className="text-sm text-gray-500 mt-2">No se han reabastecido productos recientemente</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Producto
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stock Inicial
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stock Actual
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Diferencia (Reabastecimiento)
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {productPositiveDifferences.map((diff) => (
+                  <tr key={diff.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {diff.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {diff.initialStock}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {diff.currentStock}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-green-100 text-green-800">
+                        +{diff.difference}
                       </span>
                     </td>
                   </tr>

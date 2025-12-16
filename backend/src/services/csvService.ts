@@ -223,8 +223,11 @@ export async function generateCompleteReportCSV(): Promise<string> {
       const ingresosDiarios = dailySales * p.price;
       const initialStock = p.initialStock || 0;
       const currentStock = p.stock;
-      const hasDifference = initialStock > 0 && currentStock < initialStock;
-      const difference = hasDifference ? initialStock - currentStock : 0;
+
+      // Calcular diferencia (puede ser positiva o negativa)
+      const difference = currentStock - initialStock;
+      const hasNegativeDifference = difference < 0;
+      const hasPositiveDifference = difference > 0;
 
       // Verificar si es un producto nuevo (creado hoy)
       const productCreatedDate = new Date(p.createdAt);
@@ -241,7 +244,8 @@ export async function generateCompleteReportCSV(): Promise<string> {
         'Precio Unitario': `$${p.price.toFixed(2)}`,
         'Total Ingresos': `$${totalIngresos.toFixed(2)}`,
         'Ingresos Diarios': `$${ingresosDiarios.toFixed(2)}`,
-        'Diferencia Negativa': hasDifference ? difference : 'N/A',
+        'Diferencia Negativa': hasNegativeDifference ? difference : 'N/A',
+        'Diferencia Positiva': hasPositiveDifference ? `+${difference}` : 'N/A',
         'Nuevo Producto': isNewProduct ? 'SÍ' : 'NO',
         Categoría: p.category || 'N/A',
         Unidad: p.unit,

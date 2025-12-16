@@ -31,6 +31,7 @@ import { PrismaClient } from '@prisma/client';
 import emailRoutes from './routes/emailRoutes';
 import productRoutes from './routes/productRoutes';
 import settingsRoutes from './routes/settingsRoutes';
+import { startReportScheduler } from './services/reportScheduler';
 
 // ==================== CONFIGURACIÓN ====================
 
@@ -699,6 +700,9 @@ const server = app.listen(PORT, () => {
     console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
     console.log(`🔒 Security features enabled`);
     console.log(`✅ All validations passed`);
+
+    // Iniciar el scheduler de reportes automáticos
+    startReportScheduler();
 });
 
 // ✅ MEJORADO: Graceful shutdown con timeout
