@@ -4,13 +4,11 @@
  * Panel de administración principal con sistema de pestañas mejorado
  *
  * CARACTERÍSTICAS:
- * ✅ 8 pestañas de navegación
  * ✅ Navegación sin recargar página
  * ✅ Indicador visual de pestaña activa
  * ✅ Botón de cierre para volver al inicio
  * ✅ Control de permisos por rol (ADMIN, USER, CLIENT)
  * ✅ Diseño responsivo
- * ✅ Estadísticas en tiempo real
  * ✅ USER solo ve "Ajustes de Stock"
  */
 
@@ -21,29 +19,29 @@ import {
   Users,
   Package,
   Usb,
-  BarChart3,
   Settings as SettingsIcon,
   Archive,
-  LogOut,
-  ShoppingCart
+  LogOut
 } from 'lucide-react';
 
-// Componentes de pestañas
+// Componentes de pestañas (✅ REFACTORIZADOS)
 import { UserManagement } from './UserManagement';
-import { InventoryTable } from './InventoryTable';
 import { InventoryManager } from './InventoryManager';
 import { ProductManagement } from './ProductManagement';
-import { SalesHistory } from './SalesHistory';
-import { Reports } from './Reports';
 import { Settings } from './Settings';
-import BatchManager from './BatchManager';
-// ❌ ELIMINADO: import { SyncButton } from './SyncButton'; - Ya no necesario sin IndexedDB
+
+// ❌ Componentes pendientes de refactoring (comentados temporalmente)
+// import { InventoryTable } from './InventoryTable';
+// import { SalesHistory } from './SalesHistory';
+// import { Reports } from './Reports';
+// import BatchManager from './BatchManager';
 
 // Servicios
 import { ledService } from '../../services/LedService';
 
 // Tipo de pestaña
-type TabType = 'inventory' | 'products' | 'stock' | 'orders' | 'users' | 'batches' | 'reports' | 'settings';
+type TabType = 'products' | 'stock' | 'users' | 'settings';
+// ❌ Deshabilitados: 'inventory' | 'orders' | 'batches' | 'reports'
 
 // Definición de pestañas
 interface TabConfig {
@@ -66,13 +64,6 @@ export function Dashboard() {
   // ✅ Configuración de pestañas con control de acceso
   const tabs: TabConfig[] = [
     {
-      id: 'inventory',
-      label: 'Control de Inventario',
-      icon: Package,
-      component: <InventoryTable />,
-      allowedRoles: ['ADMIN'] // Solo ADMIN
-    },
-    {
       id: 'products',
       label: 'Gestión de Productos',
       icon: Package,
@@ -87,31 +78,10 @@ export function Dashboard() {
       allowedRoles: ['ADMIN', 'USER'] // ✅ ADMIN y USER pueden ver
     },
     {
-      id: 'orders',
-      label: 'Órdenes y Transacciones',
-      icon: ShoppingCart,
-      component: <SalesHistory />,
-      allowedRoles: ['ADMIN'] // Solo ADMIN
-    },
-    {
       id: 'users',
       label: 'Usuarios',
       icon: Users,
       component: <UserManagement />,
-      allowedRoles: ['ADMIN'] // Solo ADMIN
-    },
-    {
-      id: 'batches',
-      label: 'Lotes',
-      icon: Archive,
-      component: <BatchManager />,
-      allowedRoles: ['ADMIN'] // Solo ADMIN
-    },
-    {
-      id: 'reports',
-      label: 'Reportes',
-      icon: BarChart3,
-      component: <Reports />,
       allowedRoles: ['ADMIN'] // Solo ADMIN
     },
     {
