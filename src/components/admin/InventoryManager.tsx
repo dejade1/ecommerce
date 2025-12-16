@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Minus, Save, AlertTriangle, Package } from 'lucide-react';
+import { Plus, Minus, Save, AlertTriangle, Package, History, TrendingUp, TrendingDown, Trash2 } from 'lucide-react';
 
 // ==================== TIPOS ====================
 
@@ -28,6 +28,21 @@ interface Batch {
   createdAt: string;
 }
 
+interface StockAdjustment {
+  id: number;
+  productId: number;
+  adjustmentType: string;
+  quantityBefore: number;
+  quantityAfter: number;
+  difference: number;
+  note?: string | null;
+  userId: string;
+  createdAt: string;
+  product: {
+    title: string;
+  };
+}
+
 const API_URL = 'http://localhost:3000';
 
 // ==================== COMPONENTE ====================
@@ -35,28 +50,31 @@ const API_URL = 'http://localhost:3000';
 export function InventoryManager() {
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [stockHistory, setStockHistory] = useState<StockAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selectedBatchId, setSelectedBatchId] = useState<number>(0);
   const [formData, setFormData] = useState<{
     productId: number;
     quantity: number;
-    type: 'add' | 'subtract'; // ✅ SOLO add y subtract
+    type: 'add' | 'subtract';
     note: string;
     newPrice: string;
-    expiryDate: string; // ✅ NUEVO: para crear lote al reabastecer
+    expiryDate: string;
   }>({
     productId: 0,
     quantity: 1,
     type: 'add',
     note: '',
     newPrice: '',
-    expiryDate: '' // ✅ NUEVO
+    expiryDate: ''
   });
 
   useEffect(() => {
     loadProducts();
+    loadStockHistory();
   }, []);
 
   useEffect(() => {
@@ -96,6 +114,24 @@ export function InventoryManager() {
   }
 
   /**
+   * ✅ Carga historial de ajustes de stock
+   */
+  async function loadStockHistory() {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/admin/stock-adjustments?limit=20`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      setStockHistory(data.adjustments || []);
+    } catch (error) {
+      console.error('Error loading stock history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  /**
    * ✅ Carga lotes de un producto
    */
   async function loadProductBatches(productId: number) {
@@ -104,7 +140,6 @@ export function InventoryManager() {
         credentials: 'include'
       });
       const data = await response.json();
-      // Filtrar solo lotes con stock disponible
       const availableBatches = (data.batches || []).filter((b: Batch) => b.quantity > 0);
       setBatches(availableBatches);
     } catch (error) {
@@ -142,13 +177,11 @@ export function InventoryManager() {
       return;
     }
 
-    // ✅ Validar fecha de vencimiento si es reabastecimiento
     if (formData.type === 'add' && !formData.expiryDate) {
       setError('Debe ingresar la fecha de vencimiento del lote');
       return;
     }
 
-    // ✅ Validar selección de lote si es retiro de stock
     if (formData.type === 'subtract') {
       if (batches.length > 0 && selectedBatchId === 0) {
         setError('Este producto tiene lotes. Debe seleccionar un lote para retirar stock.');
@@ -169,7 +202,6 @@ export function InventoryManager() {
     }
 
     try {
-      // ✅ SI ES REABASTECIMIENTO (ADD): Crear lote automáticamente
       if (formData.type === 'add') {
         const response = await fetch(`${API_URL}/api/admin/batches`, {
           method: 'POST',
@@ -190,7 +222,6 @@ export function InventoryManager() {
 
         setSuccess(`✅ Lote ${result.batch.batchCode} creado con ${formData.quantity} unidades`);
       }
-      // ✅ SI ES RETIRO (SUBTRACT): Decrementar del lote seleccionado
       else if (formData.type === 'subtract') {
         if (selectedBatchId === 0) {
           setError('Debe seleccionar un lote');
@@ -203,7 +234,6 @@ export function InventoryManager() {
           return;
         }
 
-        // Decrementar stock del producto
         const updateResponse = await fetch(`${API_URL}/api/admin/products/${formData.productId}`, {
           method: 'PUT',
           credentials: 'include',
@@ -217,7 +247,6 @@ export function InventoryManager() {
           throw new Error('Error al actualizar stock del producto');
         }
 
-        // Decrementar lote
         await fetch(`${API_URL}/api/admin/batches/${selectedBatchId}`, {
           method: 'PATCH',
           credentials: 'include',
@@ -230,7 +259,6 @@ export function InventoryManager() {
         setSuccess(`✅ Retiradas ${formData.quantity} unidades del lote ${selectedBatch.batchCode}`);
       }
 
-      // Resetear formulario
       setFormData({
         productId: 0,
         quantity: 1,
@@ -242,8 +270,8 @@ export function InventoryManager() {
       setSelectedBatchId(0);
       setBatches([]);
 
-      // Recargar productos
       await loadProducts();
+      await loadStockHistory();
     } catch (error) {
       console.error('Error updating stock:', error);
       setError(error instanceof Error ? error.message : 'Error al actualizar stock');
@@ -283,7 +311,6 @@ export function InventoryManager() {
 
       setSuccess(`Producto "${product.title}" eliminado correctamente`);
 
-      // Resetear formulario
       setFormData({
         productId: 0,
         quantity: 1,
@@ -293,8 +320,8 @@ export function InventoryManager() {
         expiryDate: ''
       });
 
-      // Recargar productos
       await loadProducts();
+      await loadStockHistory();
     } catch (error) {
       console.error('Error deleting product:', error);
       setError(error instanceof Error ? error.message : 'Error al eliminar producto');
@@ -306,11 +333,35 @@ export function InventoryManager() {
     return date.toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  function formatDateTime(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleString('es-ES', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
   function getDaysUntilExpiry(expiryDate: string): number {
     const expiry = new Date(expiryDate);
     const now = new Date();
     const diffTime = expiry.getTime() - now.getTime();
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  function getAdjustmentTypeLabel(type: string): { label: string; color: string; icon: React.ReactNode } {
+    switch (type) {
+      case 'batch':
+        return { label: 'Reabastecimiento', color: 'text-green-700 bg-green-50', icon: <TrendingUp className="h-4 w-4" /> };
+      case 'subtract':
+        return { label: 'Retiro', color: 'text-red-700 bg-red-50', icon: <TrendingDown className="h-4 w-4" /> };
+      case 'delete':
+        return { label: 'Eliminación', color: 'text-gray-700 bg-gray-50', icon: <Trash2 className="h-4 w-4" /> };
+      default:
+        return { label: type, color: 'text-blue-700 bg-blue-50', icon: <History className="h-4 w-4" /> };
+    }
   }
 
   if (loading) {
@@ -343,7 +394,6 @@ export function InventoryManager() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Selector de Producto */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Producto
@@ -362,7 +412,6 @@ export function InventoryManager() {
           </select>
         </div>
 
-        {/* Tipo de Movimiento */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Tipo de Ajuste
@@ -377,7 +426,6 @@ export function InventoryManager() {
           </select>
         </div>
 
-        {/* ✅ FECHA DE VENCIMIENTO (solo si es reabastecimiento) */}
         {formData.type === 'add' && (
           <div className="bg-green-50 border border-green-200 rounded-md p-4">
             <label className="block text-sm font-medium text-green-900 mb-2">
@@ -397,7 +445,6 @@ export function InventoryManager() {
           </div>
         )}
 
-        {/* ✅ SELECCIÓN DE LOTE (solo si es retiro y hay lotes) */}
         {formData.type === 'subtract' && batches.length > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
             <div className="flex items-center mb-2">
@@ -436,7 +483,6 @@ export function InventoryManager() {
           </div>
         )}
 
-        {/* Cantidad */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Cantidad
@@ -466,7 +512,6 @@ export function InventoryManager() {
           </div>
         </div>
 
-        {/* Botones */}
         <div className="flex gap-3">
           <button
             type="submit"
@@ -489,6 +534,98 @@ export function InventoryManager() {
           )}
         </div>
       </form>
+
+      {/* ✅ TABLA DE HISTORIAL DE MOVIMIENTOS */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-medium flex items-center">
+            <History className="h-5 w-5 mr-2 text-gray-700" />
+            Historial de Movimientos
+          </h3>
+          <button
+            onClick={loadStockHistory}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Actualizar
+          </button>
+        </div>
+        {historyLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-yellow-400"></div>
+          </div>
+        ) : stockHistory.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No hay movimientos registrados
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fecha
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Producto
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tipo
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cantidad
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Stock Antes/Después
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Usuario
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nota
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {stockHistory.map((adjustment) => {
+                  const typeInfo = getAdjustmentTypeLabel(adjustment.adjustmentType);
+                  return (
+                    <tr key={adjustment.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDateTime(adjustment.createdAt)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {adjustment.product.title}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${typeInfo.color}`}>
+                          {typeInfo.icon}
+                          <span className="ml-1">{typeInfo.label}</span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`text-sm font-semibold ${
+                          adjustment.difference > 0 ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {adjustment.difference > 0 ? '+' : ''}{adjustment.difference}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {adjustment.quantityBefore} → {adjustment.quantityAfter}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {adjustment.userId}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                        {adjustment.note || '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Tabla de Inventario Actual */}
       <div className="mt-8">
