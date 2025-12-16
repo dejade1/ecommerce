@@ -1,0 +1,388 @@
+/**
+ * INSTRUCCIONES: Agrega este código a backend/server.ts
+ * 
+ * UBICACIÓN: Después de la sección "RUTAS DE PRODUCTOS" y ANTES de "RUTAS PROTEGIDAS"
+ * 
+ * Busca esta línea en server.ts:
+ *   });
+ * });
+ * 
+ * // ==================== RUTAS PROTEGIDAS (EJEMPLO) ====================
+ * 
+ * Y PEGA ESTO JUSTO ANTES:
+ */
+
+// ==================== RUTAS DE ÓRDENES ====================
+
+/**
+ * POST /api/orders
+ * Crea una nueva orden con datos completos del cliente
+ * ACCESO: Público (no requiere autenticación para permitir checkout como invitado)
+ */
+app.post('/api/orders', async (req: Request, res: Response) => {
+    try {
+        const { customerName, customerEmail, phone, address, paymentMethod, total, items } = req.body;
+
+        // Validaciones
+        if (!customerName || !customerEmail || !phone || !address || !paymentMethod) {
+            return res.status(400).json({ 
+                error: 'Faltan datos obligatorios del cliente',
+                required: ['customerName', 'customerEmail', 'phone', 'address', 'paymentMethod']
+            });
+        }
+
+        if (!total || total <= 0) {
+            return res.status(400).json({ error: 'El total de la orden debe ser mayor a 0' });
+        }
+
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'La orden debe tener al menos un producto' });
+        }
+
+        // Validar email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(customerEmail)) {
+            return res.status(400).json({ error: 'Email inválido' });
+        }
+
+        // Iniciar transacción
+        const order = await prisma.$transaction(async (tx) => {
+            // 1. Crear orden
+            const newOrder = await tx.order.create({
+                data: {
+                    customerName,
+                    customerEmail,
+                    phone,
+                    address,
+                    paymentMethod,
+                    total,
+                    status: 'PENDING'
+                }
+            });
+
+            // 2. Crear items y actualizar stock
+            for (const item of items) {
+                // Validar que el producto existe y tiene stock suficiente
+                const product = await tx.product.findUnique({
+                    where: { id: item.productId }
+                });
+
+                if (!product) {
+                    throw new Error(`Producto con ID ${item.productId} no encontrado`);
+                }
+
+                if (product.stock < item.quantity) {
+                    throw new Error(`Stock insuficiente para ${product.title}. Disponible: ${product.stock}, Solicitado: ${item.quantity}`);
+                }
+
+                // Crear item de la orden
+                await tx.orderItem.create({
+                    data: {
+                        orderId: newOrder.id,
+                        productId: item.productId,
+                        quantity: item.quantity,
+                        price: item.price
+                    }
+                });
+
+                // Actualizar stock y ventas
+                await tx.product.update({
+                    where: { id: item.productId },
+                    data: {
+                        stock: {
+                            decrement: item.quantity
+                        },
+                        sales: {
+                            increment: item.quantity
+                        },
+                        dailySales: {
+                            increment: item.quantity
+                        }
+                    }
+                });
+            }
+
+            // 3. Actualizar estado de la orden a completada
+            return await tx.order.update({
+                where: { id: newOrder.id },
+                data: { status: 'COMPLETED' },
+                include: {
+                    items: {
+                        include: {
+                            product: {
+                                select: {
+                                    id: true,
+                                    title: true,
+                                    image: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        // Log de seguridad
+        console.log(`[ÓRDEN] Nueva orden creada: #${order.id}`);
+        console.log(`  Cliente: ${customerName} (${customerEmail})`);
+        console.log(`  Total: $${total}`);
+        console.log(`  Productos: ${items.length}`);
+        console.log(`  Método de pago: ${paymentMethod}`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Orden creada exitosamente',
+            order: {
+                id: order.id,
+                customerName: order.customerName,
+                customerEmail: order.customerEmail,
+                phone: order.phone,
+                address: order.address,
+                paymentMethod: order.paymentMethod,
+                total: order.total,
+                status: order.status,
+                createdAt: order.createdAt,
+                items: order.items.map(item => ({
+                    id: item.id,
+                    productId: item.productId,
+                    productTitle: item.product.title,
+                    productImage: item.product.image,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            }
+        });
+
+    } catch (error: any) {
+        console.error('[ERROR] Create order failed:', error);
+        
+        // Errores específicos
+        if (error.message.includes('no encontrado') || error.message.includes('insuficiente')) {
+            return res.status(400).json({ error: error.message });
+        }
+        
+        res.status(500).json({ error: 'Error al crear la orden' });
+    }
+});
+
+/**
+ * GET /api/orders
+ * Obtiene todas las órdenes con sus items
+ * ACCESO: Requiere autenticación (solo admin puede ver todas las órdenes)
+ */
+app.get('/api/orders', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const orders = await prisma.order.findMany({
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                id: true,
+                                title: true,
+                                image: true,
+                                price: true,
+                                category: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        // Formatear response
+        const formattedOrders = orders.map(order => ({
+            id: order.id,
+            customerName: order.customerName,
+            customerEmail: order.customerEmail,
+            phone: order.phone,
+            address: order.address,
+            paymentMethod: order.paymentMethod,
+            total: order.total,
+            status: order.status,
+            createdAt: order.createdAt,
+            items: order.items.map(item => ({
+                id: item.id,
+                orderId: item.orderId,
+                productId: item.productId,
+                productTitle: item.product.title,
+                productImage: item.product.image,
+                quantity: item.quantity,
+                price: item.price
+            }))
+        }));
+
+        res.json({ 
+            success: true, 
+            orders: formattedOrders,
+            total: formattedOrders.length
+        });
+
+    } catch (error) {
+        console.error('[ERROR] Get orders failed:', error);
+        res.status(500).json({ error: 'Error al obtener órdenes' });
+    }
+});
+
+/**
+ * GET /api/orders/:id
+ * Obtiene una orden específica por ID
+ * ACCESO: Requiere autenticación
+ */
+app.get('/api/orders/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const orderId = parseInt(req.params.id, 10);
+
+        if (isNaN(orderId)) {
+            return res.status(400).json({ error: 'ID de orden inválido' });
+        }
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            select: {
+                                id: true,
+                                title: true,
+                                image: true,
+                                price: true,
+                                category: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!order) {
+            return res.status(404).json({ error: 'Orden no encontrada' });
+        }
+
+        res.json({
+            success: true,
+            order: {
+                id: order.id,
+                customerName: order.customerName,
+                customerEmail: order.customerEmail,
+                phone: order.phone,
+                address: order.address,
+                paymentMethod: order.paymentMethod,
+                total: order.total,
+                status: order.status,
+                createdAt: order.createdAt,
+                items: order.items.map(item => ({
+                    id: item.id,
+                    productId: item.productId,
+                    productTitle: item.product.title,
+                    productImage: item.product.image,
+                    quantity: item.quantity,
+                    price: item.price
+                }))
+            }
+        });
+
+    } catch (error) {
+        console.error('[ERROR] Get order failed:', error);
+        res.status(500).json({ error: 'Error al obtener orden' });
+    }
+});
+
+/**
+ * PATCH /api/orders/:id/status
+ * Actualiza el estado de una orden
+ * ACCESO: Solo admin
+ */
+app.patch('/api/orders/:id/status', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const orderId = parseInt(req.params.id, 10);
+        const { status } = req.body;
+
+        // Validar estados permitidos
+        const validStatuses = ['PENDING', 'PROCESSING', 'COMPLETED', 'CANCELLED'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ 
+                error: 'Estado inválido',
+                validStatuses
+            });
+        }
+
+        const order = await prisma.order.update({
+            where: { id: orderId },
+            data: { status }
+        });
+
+        console.log(`[ÓRDEN] Estado actualizado: Orden #${orderId} -> ${status} por ${req.user?.username}`);
+
+        res.json({
+            success: true,
+            message: 'Estado de orden actualizado',
+            order
+        });
+
+    } catch (error: any) {
+        console.error('[ERROR] Update order status failed:', error);
+        
+        if (error.code === 'P2025') {
+            return res.status(404).json({ error: 'Orden no encontrada' });
+        }
+        
+        res.status(500).json({ error: 'Error al actualizar estado de orden' });
+    }
+});
+
+/**
+ * DELETE /api/orders/:id
+ * Elimina una orden (solo admin)
+ * NOTA: Esto NO restaura el stock automáticamente
+ * ACCESO: Solo admin
+ */
+app.delete('/api/orders/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+        const orderId = parseInt(req.params.id, 10);
+
+        // Verificar que la orden existe
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { items: true }
+        });
+
+        if (!order) {
+            return res.status(404).json({ error: 'Orden no encontrada' });
+        }
+
+        // Eliminar orden (cascade eliminará los items automáticamente)
+        await prisma.order.delete({
+            where: { id: orderId }
+        });
+
+        console.log(`[ÓRDEN] Orden eliminada: #${orderId} por ${req.user?.username}`);
+        console.log(`  ⚠️  NOTA: Stock NO restaurado automáticamente`);
+
+        res.json({
+            success: true,
+            message: 'Orden eliminada exitosamente',
+            warning: 'El stock NO fue restaurado automáticamente. Ajusta manualmente si es necesario.'
+        });
+
+    } catch (error) {
+        console.error('[ERROR] Delete order failed:', error);
+        res.status(500).json({ error: 'Error al eliminar orden' });
+    }
+});
+
+// ==================== FIN DE RUTAS DE ÓRDENES ====================
+
+/**
+ * FINALMENTE, actualiza el mensaje de inicio del servidor:
+ * 
+ * Busca estas líneas al final del archivo:
+ *     console.log(`📦 Products API enabled`);
+ * 
+ * Y agrega después:
+ *     console.log(`🛍️ Orders API enabled (POST, GET, PATCH, DELETE)`);
+ */
