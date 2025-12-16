@@ -1,14 +1,22 @@
 {
+  "storeName": "Mi Tienda E-commerce",
+  "currency": "USD",
+  "timezone": "America/New_York",
+  "emailNotifications": true,
   "lowStockAlert": true,
   "expiryAlert": true,
   "alertThreshold": 2,
   "adminEmails": [
-    "jmdelgado2001@gmail.com",
-    "jmdelgado2001@hotmail.com"
+    "diegeinsdelgado@hotmail.com"
   ],
-  "autoReportTime": "17:41",
+  "autoReportTime": "15:11",
   "autoReportEnabled": true,
   "esp32Enabled": false,
+  "arduinoPort": "COM3",
+  "ledDuration": 3000,
   "esp32IpAddress": "",
-  "esp32Port": 80
+  "esp32Port": 80,
+  "sessionTimeout": 30,
+  "requireStrongPassword": true,
+  "twoFactorAuth": false
 }

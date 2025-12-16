@@ -585,7 +585,79 @@ app.post('/api/users/:userId/points', authenticateToken, async (req: AuthRequest
         res.status(500).json({ error: 'Error al actualizar puntos' });
     }
 });
+// ==================== RUTAS DE ÓRDENES ====================
 
+app.post('/api/orders', async (req: Request, res: Response) => {
+    try {
+        const { customerName, customerEmail, phone, address, paymentMethod, total, items } = req.body;
+
+        if (!customerName || !customerEmail || !phone || !address || !paymentMethod || !total || !items?.length) {
+            return res.status(400).json({ error: 'Faltan datos obligatorios' });
+        }
+
+        const order = await prisma.$transaction(async (tx) => {
+            const newOrder = await tx.order.create({
+                data: { customerName, customerEmail, phone, address, paymentMethod, total, status: 'PENDING' }
+            });
+
+            for (const item of items) {
+                const product = await tx.product.findUnique({ where: { id: item.productId } });
+                
+                if (!product || product.stock < item.quantity) {
+                    throw new Error(`Stock insuficiente para producto ID ${item.productId}`);
+                }
+
+                await tx.orderItem.create({
+                    data: { orderId: newOrder.id, productId: item.productId, quantity: item.quantity, price: item.price }
+                });
+
+                await tx.product.update({
+                    where: { id: item.productId },
+                    data: {
+                        stock: { decrement: item.quantity },
+                        sales: { increment: item.quantity },
+                        dailySales: { increment: item.quantity }
+                    }
+                });
+            }
+
+            return await tx.order.update({
+                where: { id: newOrder.id },
+                data: { status: 'COMPLETED' },
+                include: { items: { include: { product: true } } }
+            });
+        });
+
+        console.log(`[ÓRDEN] #${order.id} - ${customerName} - $${total}`);
+        res.status(201).json({ success: true, order });
+    } catch (error: any) {
+        console.error('[ERROR] Create order:', error);
+        res.status(500).json({ error: error.message || 'Error al crear orden' });
+    }
+});
+
+app.get('/api/orders', authenticateToken, async (req: AuthRequest, res: Response) => {
+    try {
+        const orders = await prisma.order.findMany({
+            include: { items: { include: { product: true } } },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const formatted = orders.map(o => ({
+            ...o,
+            items: o.items.map(i => ({
+                id: i.id, orderId: i.orderId, productId: i.productId,
+                quantity: i.quantity, price: i.price,
+                productTitle: i.product.title, productImage: i.product.image
+            }))
+        }));
+
+        res.json({ success: true, orders: formatted });
+    } catch (error) {
+        console.error('[ERROR] Get orders:', error);
+        res.status(500).json({ error: 'Error al obtener órdenes' });
+    }
+});
 // ==================== RUTAS PROTEGIDAS (EJEMPLO) ====================
 
 /**
@@ -733,3 +805,6 @@ process.on('SIGINT', async () => {
     await prisma.$disconnect();
     process.exit(0);
 });
+
+console.log(`📦 Products API enabled`);
+console.log(`🛒 Orders API enabled`);
