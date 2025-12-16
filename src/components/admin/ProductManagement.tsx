@@ -46,7 +46,8 @@ export function ProductManagement() {
     rating: '5.0',
     category: '',
     slot: '',          // ✅ NUEVO
-    slotDistance: ''   // ✅ NUEVO
+    slotDistance: '',  // ✅ NUEVO
+    expiryDate: ''     // ✅ NUEVO: Fecha de vencimiento del primer lote
   });
 
   useEffect(() => {
@@ -135,6 +136,13 @@ export function ProductManagement() {
         return;
       }
 
+      // ✅ NUEVO: Validar fecha de vencimiento si hay stock inicial
+      if (stock > 0 && !newProduct.expiryDate) {
+        setError('Debe ingresar la fecha de vencimiento para el stock inicial');
+        setLoading(false);
+        return;
+      }
+
       if (rating < 0 || rating > 5) {
         setError('La calificación debe estar entre 0 y 5');
         setLoading(false);
@@ -152,7 +160,8 @@ export function ProductManagement() {
         rating,
         category: newProduct.category || null,
         slot,
-        slotDistance
+        slotDistance,
+        expiryDate: newProduct.expiryDate || null  // ✅ NUEVO
       };
 
       // ✅ Enviar al backend
@@ -184,7 +193,8 @@ export function ProductManagement() {
         rating: '5.0',
         category: '',
         slot: '',
-        slotDistance: ''
+        slotDistance: '',
+        expiryDate: ''  // ✅ NUEVO
       });
       setImageFile(null);
       setImagePreview('');
@@ -298,6 +308,29 @@ export function ProductManagement() {
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
                   />
                 </div>
+
+                {/* ✅ NUEVO: Fecha de Vencimiento (solo si stock > 0) */}
+                {parseInt(newProduct.stock) > 0 && (
+                  <div className="col-span-6">
+                    <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                      <label htmlFor="expiryDate" className="block text-sm font-medium text-green-900 mb-2">
+                        Fecha de Vencimiento del Lote Inicial *
+                      </label>
+                      <input
+                        type="date"
+                        id="expiryDate"
+                        value={newProduct.expiryDate}
+                        onChange={(e) => setNewProduct({ ...newProduct, expiryDate: e.target.value })}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="block w-full rounded-md border-green-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
+                        required
+                      />
+                      <p className="mt-2 text-xs text-green-700">
+                        📦 Se creará automáticamente el primer lote con código único (ej: ArrPreBl-1-16122025)
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Unidad */}
                 <div className="col-span-6 sm:col-span-2">
