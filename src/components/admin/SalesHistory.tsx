@@ -51,6 +51,7 @@ export function SalesHistory() {
    */
   const loadOrders = async () => {
     try {
+      setLoading(true);
       const response = await fetch(`${API_URL}/api/orders`, {
         method: 'GET',
         credentials: 'include',
@@ -100,6 +101,7 @@ export function SalesHistory() {
     return true;
   });
 
+  // Calcular estadísticas
   const totalSales = filteredOrders.reduce((sum, order) => sum + order.total, 0);
   const totalOrders = filteredOrders.length;
   const totalItems = filteredOrders.reduce((sum, order) => {
@@ -116,6 +118,8 @@ export function SalesHistory() {
 
   return (
     <div className="space-y-6">
+      <h2 className="text-xl font-semibold">Historial de Ventas</h2>
+
       {/* Estadísticas */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div className="bg-white overflow-hidden shadow rounded-lg">
