@@ -603,6 +603,7 @@ app.post('/api/orders', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Faltan datos obligatorios' });
         }
 
+        // ✅ Aumentar timeout de transacción a 15 segundos
         const order = await prisma.$transaction(async (tx) => {
             const newOrder = await tx.order.create({
                 data: { customerName, customerEmail, phone, address, paymentMethod, total, status: 'PENDING' }
@@ -644,6 +645,9 @@ app.post('/api/orders', async (req: Request, res: Response) => {
                 data: { status: 'COMPLETED' },
                 include: { items: { include: { product: true } } }
             });
+        }, {
+            maxWait: 10000,  // ✅ Esperar hasta 10 segundos antes de iniciar transacción
+            timeout: 15000   // ✅ Timeout total de 15 segundos (antes era 5 segundos por defecto)
         });
 
         console.log(`[ÓRDEN] #${order.id} - ${customerName} - $${total}`);
