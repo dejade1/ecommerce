@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Upload } from 'lucide-react';
+import { Search, Plus, Edit2, Upload, AlertTriangle } from 'lucide-react';
 import { ProductEditModal } from './ProductEditModal';
 
 // ==================== TIPOS ====================
@@ -31,6 +31,7 @@ export function ProductManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [slotWarning, setSlotWarning] = useState('');  // ✅ Warning de slot duplicado
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -75,6 +76,23 @@ export function ProductManagement() {
       setError('Error al cargar productos');
     }
   }
+
+  // ✅ Verificar si el slot ya está en uso
+  const checkSlotDuplicate = (slotValue: string) => {
+    if (!slotValue || slotValue === '') {
+      setSlotWarning('');
+      return;
+    }
+
+    const slotNum = parseInt(slotValue);
+    const existingProduct = products.find(p => p.slot === slotNum);
+
+    if (existingProduct) {
+      setSlotWarning(`⚠️ El slot #${slotNum} ya está asignado al producto "${existingProduct.title}"`);
+    } else {
+      setSlotWarning('');
+    }
+  };
 
   const filteredProducts = products.filter(product =>
     product.title.toLowerCase().includes(searchTerm.toLowerCase())
@@ -187,6 +205,7 @@ export function ProductManagement() {
       });
       setImageFile(null);
       setImagePreview('');
+      setSlotWarning('');  // ✅ Limpiar warning
 
       await loadProducts();
     } catch (error) {
@@ -208,21 +227,11 @@ export function ProductManagement() {
     setEditingProduct(null);
   };
 
-  /**
-   * Formatea slotDistance para mostrar decimales correctamente
-   * - Si tiene decimales, los muestra (9.21, 8.30)
-   * - Si es entero, muestra .0 (9 -> 9.0)
-   */
   const formatSlotDistance = (value: number): string => {
-    // Convertir a string para preservar decimales
     const str = value.toString();
-    
-    // Si ya tiene punto decimal, retornar tal cual
     if (str.includes('.')) {
       return str;
     }
-    
-    // Si es entero, agregar .0
     return `${str}.0`;
   };
 
@@ -246,6 +255,12 @@ export function ProductManagement() {
               {success && (
                 <div className="mb-4 bg-green-50 text-green-500 p-3 rounded-md text-sm">
                   {success}
+                </div>
+              )}
+              {slotWarning && (
+                <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-md text-sm flex items-start">
+                  <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+                  <span>{slotWarning}</span>
                 </div>
               )}
 
@@ -326,7 +341,7 @@ export function ProductManagement() {
                         required
                       />
                       <p className="mt-2 text-xs text-green-700">
-                        📦 Se creará automáticamente el primer lote con código único (ej: ArrPreBl-1-16122025)
+                        📦 Se creará automáticamente el primer lote con código único
                       </p>
                     </div>
                   </div>
@@ -390,8 +405,13 @@ export function ProductManagement() {
                     type="number"
                     id="slot"
                     value={newProduct.slot}
-                    onChange={(e) => setNewProduct({ ...newProduct, slot: e.target.value })}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm"
+                    onChange={(e) => {
+                      setNewProduct({ ...newProduct, slot: e.target.value });
+                      checkSlotDuplicate(e.target.value);  // ✅ Verificar duplicado
+                    }}
+                    className={`mt-1 block w-full border rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm ${
+                      slotWarning ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                    }`}
                     placeholder="1, 2, 3..."
                   />
                   <p className="mt-1 text-xs text-gray-500">Número de slot ESP32/Arduino</p>
@@ -474,7 +494,7 @@ export function ProductManagement() {
               <div className="mt-5">
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !!slotWarning}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-gray-900 bg-yellow-400 hover:bg-yellow-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="h-5 w-5 mr-2" />
