@@ -126,6 +126,7 @@ router.get('/products/:id', authenticateToken, requireAdmin, async (req: Request
  * Crea un nuevo producto
  * ✅ ACTUALIZADO: Si tiene stock inicial, crea automáticamente el primer lote
  * ✅ AGREGADO: Campos slot y slotDistance para hardware
+ * ✅ AGREGADO: Validación de slots duplicados
  */
 router.post('/products', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -138,9 +139,9 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
       image,
       rating,
       category,
-      slot,           // ✅ Número de slot (hardware)
-      slotDistance,   // ✅ Distancia del motor en cm (Float para decimales)
-      expiryDate      // ✅ Fecha de vencimiento del primer lote
+      slot,
+      slotDistance,
+      expiryDate
     } = req.body;
 
     // Validaciones
@@ -165,7 +166,6 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
       });
     }
 
-    // ✅ VALIDAR: Si tiene stock inicial, debe proporcionar fecha de vencimiento
     if (stock > 0 && !expiryDate) {
       return res.status(400).json({
         success: false,
@@ -180,7 +180,27 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
       });
     }
 
+    // ✅ VALIDAR SLOT DUPLICADO
+    const slotValue = slot !== undefined && slot !== null && slot !== '' ? parseInt(slot) : null;
+    if (slotValue !== null) {
+      const existingProductWithSlot = await prisma.product.findFirst({
+        where: { slot: slotValue }
+      });
+
+      if (existingProductWithSlot) {
+        return res.status(400).json({
+          success: false,
+          message: `⚠️ El slot #${slotValue} ya está asignado al producto "${existingProductWithSlot.title}". Cada slot debe ser único.`
+        });
+      }
+    }
+
     const stockValue = parseInt(stock);
+    const slotDistanceValue = slotDistance !== undefined && slotDistance !== null && slotDistance !== '' 
+      ? parseFloat(parseFloat(slotDistance).toFixed(2))  // ✅ Forzar 2 decimales
+      : null;
+
+    console.log(`🔧 Creando producto con slotDistance: ${slotDistanceValue} (tipo: ${typeof slotDistanceValue})`);
 
     // Usar transacción para asegurar consistencia
     const result = await prisma.$transaction(async (tx) => {
@@ -190,19 +210,19 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
           title: title.trim(),
           description: description ? description.trim() : null,
           price: parseFloat(price),
-          stock: stockValue,  // ✅ Stock inicial
+          stock: stockValue,
           initialStock: stockValue,
           unit: unit.trim(),
           image: image ? image.trim() : null,
           rating: rating !== undefined ? parseFloat(rating) : 0,
           category: category ? category.trim() : null,
-          slot: slot !== undefined && slot !== null && slot !== '' ? parseInt(slot) : null,
-          slotDistance: slotDistance !== undefined && slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null,
+          slot: slotValue,
+          slotDistance: slotDistanceValue,  // ✅ Float con 2 decimales
           sales: 0
         }
       });
 
-      console.log(`✅ Producto creado: ${product.title} (ID: ${product.id}, Stock: ${product.stock})`);
+      console.log(`✅ Producto creado: ${product.title} (ID: ${product.id}, Slot: ${product.slot}, Distancia: ${product.slotDistance}cm)`);
 
       // 2. ✅ CREAR PRIMER LOTE SIN INCREMENTAR STOCK (solo registrar)
       let batchInfo = null;
@@ -236,7 +256,7 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
           data: {
             productId: product.id,
             batchCode,
-            quantity: stockValue,  // ✅ Cantidad del lote
+            quantity: stockValue,
             expiryDate: new Date(expiryDate)
           }
         });
@@ -282,6 +302,7 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
  * PUT /api/admin/products/:id
  * Actualiza un producto existente
  * ✅ AGREGADO: Soporte para actualizar slot y slotDistance
+ * ✅ AGREGADO: Validación de slots duplicados
  */
 router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -341,6 +362,24 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
       });
     }
 
+    // ✅ VALIDAR SLOT DUPLICADO (solo si se está actualizando el slot)
+    const slotValue = slot !== undefined && slot !== null && slot !== '' ? parseInt(slot) : null;
+    if (slotValue !== null && slotValue !== existingProduct.slot) {
+      const existingProductWithSlot = await prisma.product.findFirst({
+        where: { 
+          slot: slotValue,
+          id: { not: productId }  // Excluir el producto actual
+        }
+      });
+
+      if (existingProductWithSlot) {
+        return res.status(400).json({
+          success: false,
+          message: `⚠️ El slot #${slotValue} ya está asignado al producto "${existingProductWithSlot.title}". Cada slot debe ser único.`
+        });
+      }
+    }
+
     // Construir objeto de actualización solo con campos proporcionados
     const updateData: any = {};
 
@@ -352,8 +391,12 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
     if (image !== undefined) updateData.image = image ? image.trim() : null;
     if (rating !== undefined) updateData.rating = parseFloat(rating);
     if (category !== undefined) updateData.category = category ? category.trim() : null;
-    if (slot !== undefined) updateData.slot = slot !== null && slot !== '' ? parseInt(slot) : null;
-    if (slotDistance !== undefined) updateData.slotDistance = slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null;
+    if (slot !== undefined) updateData.slot = slotValue;
+    if (slotDistance !== undefined) {
+      updateData.slotDistance = slotDistance !== null && slotDistance !== '' 
+        ? parseFloat(parseFloat(slotDistance).toFixed(2))  // ✅ Forzar 2 decimales
+        : null;
+    }
 
     // Actualizar producto
     const product = await prisma.product.update({
@@ -361,7 +404,7 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
       data: updateData
     });
 
-    console.log(`✅ Producto actualizado: ${product.title} (ID: ${product.id})`);
+    console.log(`✅ Producto actualizado: ${product.title} (ID: ${product.id}, Slot: ${product.slot}, Distancia: ${product.slotDistance}cm)`);
 
     return res.json({
       success: true,
