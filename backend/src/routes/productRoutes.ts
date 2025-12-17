@@ -13,7 +13,6 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { requireAdmin, authenticateToken } from '../middleware/auth';
-import { createBatch } from '../services/batch.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -181,49 +180,92 @@ router.post('/products', authenticateToken, requireAdmin, async (req: Request, r
       });
     }
 
-    // Crear producto
-    const product = await prisma.product.create({
-      data: {
-        title: title.trim(),
-        description: description ? description.trim() : null,
-        price: parseFloat(price),
-        stock: parseInt(stock),
-        initialStock: parseInt(stock),
-        unit: unit.trim(),
-        image: image ? image.trim() : null,
-        rating: rating !== undefined ? parseFloat(rating) : 0,
-        category: category ? category.trim() : null,
-        slot: slot !== undefined && slot !== null && slot !== '' ? parseInt(slot) : null,           // ✅ Int
-        slotDistance: slotDistance !== undefined && slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null,  // ✅ Float para decimales
-        sales: 0
-      }
-    });
+    const stockValue = parseInt(stock);
 
-    console.log(`✅ Producto creado: ${product.title} (ID: ${product.id}, Slot: ${product.slot || 'N/A'}, Distancia: ${product.slotDistance || 'N/A'}cm)`);
+    // Usar transacción para asegurar consistencia
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Crear producto
+      const product = await tx.product.create({
+        data: {
+          title: title.trim(),
+          description: description ? description.trim() : null,
+          price: parseFloat(price),
+          stock: stockValue,  // ✅ Stock inicial
+          initialStock: stockValue,
+          unit: unit.trim(),
+          image: image ? image.trim() : null,
+          rating: rating !== undefined ? parseFloat(rating) : 0,
+          category: category ? category.trim() : null,
+          slot: slot !== undefined && slot !== null && slot !== '' ? parseInt(slot) : null,
+          slotDistance: slotDistance !== undefined && slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null,
+          sales: 0
+        }
+      });
 
-    // ✅ CREAR PRIMER LOTE AUTOMÁTICAMENTE si tiene stock inicial
-    let batchInfo = null;
-    if (stock > 0 && expiryDate) {
-      try {
-        const batch = await createBatch(
-          product.id,
-          parseInt(stock),
-          new Date(expiryDate),
-          'SYSTEM' // Usuario por defecto al crear producto
-        );
+      console.log(`✅ Producto creado: ${product.title} (ID: ${product.id}, Stock: ${product.stock})`);
+
+      // 2. ✅ CREAR PRIMER LOTE SIN INCREMENTAR STOCK (solo registrar)
+      let batchInfo = null;
+      if (stockValue > 0 && expiryDate) {
+        // Generar código de lote
+        const words = product.title
+          .trim()
+          .split(/\s+/)
+          .filter(word => word.length > 0);
+        
+        const prefix = words
+          .slice(0, 3)
+          .map(word => {
+            const cleaned = word.replace(/[^a-zA-Z]/g, '');
+            if (cleaned.length === 0) return '';
+            return cleaned.charAt(0).toUpperCase() + cleaned.slice(1, 2).toLowerCase();
+          })
+          .filter(part => part.length > 0)
+          .join('');
+
+        const finalPrefix = prefix.length > 0 ? prefix : 'PROD';
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = now.getFullYear();
+        const dateStr = `${day}${month}${year}`;
+        const batchCode = `${finalPrefix}-1-${dateStr}`;
+
+        // Crear lote inicial SIN incrementar stock (porque ya está en el producto)
+        const batch = await tx.batch.create({
+          data: {
+            productId: product.id,
+            batchCode,
+            quantity: stockValue,  // ✅ Cantidad del lote
+            expiryDate: new Date(expiryDate)
+          }
+        });
+
+        // Registrar ajuste de stock (para auditoría)
+        await tx.stockAdjustment.create({
+          data: {
+            productId: product.id,
+            adjustmentType: 'batch',
+            quantityBefore: 0,
+            quantityAfter: stockValue,
+            difference: stockValue,
+            note: `Lote inicial creado: ${batchCode} | Vencimiento: ${new Date(expiryDate).toISOString().split('T')[0]}`,
+            userId: 'SYSTEM'
+          }
+        });
+
         batchInfo = batch;
-        console.log(`📦 Primer lote creado automáticamente: ${batch.batchCode}`);
-      } catch (batchError) {
-        console.warn(`⚠️ No se pudo crear lote inicial: ${batchError}`);
-        // No fallar la creación del producto si falla el lote
+        console.log(`📦 Lote inicial creado: ${batchCode} (Stock: ${stockValue} NO duplicado)`);
       }
-    }
+
+      return { product, batch: batchInfo };
+    });
 
     return res.status(201).json({
       success: true,
-      message: `Producto "${product.title}" creado exitosamente${batchInfo ? ` con lote ${batchInfo.batchCode}` : ''}`,
-      product,
-      batch: batchInfo
+      message: `Producto "${result.product.title}" creado exitosamente${result.batch ? ` con lote ${result.batch.batchCode}` : ''}`,
+      product: result.product,
+      batch: result.batch
     });
   } catch (error) {
     console.error('Error creating product:', error);
@@ -261,8 +303,8 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
       image,
       rating,
       category,
-      slot,           // ✅ Int
-      slotDistance    // ✅ Float
+      slot,
+      slotDistance
     } = req.body;
 
     // Verificar que el producto existe
@@ -310,8 +352,8 @@ router.put('/products/:id', authenticateToken, requireAdmin, async (req: Request
     if (image !== undefined) updateData.image = image ? image.trim() : null;
     if (rating !== undefined) updateData.rating = parseFloat(rating);
     if (category !== undefined) updateData.category = category ? category.trim() : null;
-    if (slot !== undefined) updateData.slot = slot !== null && slot !== '' ? parseInt(slot) : null;  // ✅ Int
-    if (slotDistance !== undefined) updateData.slotDistance = slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null;  // ✅ Float
+    if (slot !== undefined) updateData.slot = slot !== null && slot !== '' ? parseInt(slot) : null;
+    if (slotDistance !== undefined) updateData.slotDistance = slotDistance !== null && slotDistance !== '' ? parseFloat(slotDistance) : null;
 
     // Actualizar producto
     const product = await prisma.product.update({
