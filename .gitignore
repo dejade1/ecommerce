@@ -62,3 +62,20 @@ logs/
 # Backups
 *.backup
 *.backup.*
+
+# Security - Added by security audit
+.env
+.env.local
+.env.*.local
+secrets/
+*.key
+*.pem
+*.crt
+
+# Logs
+logs/
+*.log
+
+# Backups
+*.backup
+*.backup.*
