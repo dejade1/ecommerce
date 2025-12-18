@@ -18,13 +18,15 @@ export function HardwareSettings() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch(`${API_URL}/settings/esp32_ip`, {
+      // ✅ CORREGIDO: Usar /admin/settings
+      const response = await fetch(`${API_URL}/admin/settings/esp32_ip`, {
         credentials: 'include'
       });
 
       if (response.ok) {
         const data = await response.json();
         setEsp32IP(data.setting.value);
+        console.log('✅ IP cargada:', data.setting.value);
       }
     } catch (error) {
       console.error('Error cargando configuración:', error);
@@ -48,7 +50,8 @@ export function HardwareSettings() {
     setMessage(null);
 
     try {
-      const response = await fetch(`${API_URL}/settings/esp32_ip`, {
+      // ✅ CORREGIDO: Usar /admin/settings
+      const response = await fetch(`${API_URL}/admin/settings/esp32_ip`, {
         method: 'PUT',
         credentials: 'include',
         headers: {
@@ -61,17 +64,21 @@ export function HardwareSettings() {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Respuesta del servidor:', data);
+        
         // Actualizar IP en LedService
         ledService.setESP32IP(esp32IP);
         
         setMessage({ type: 'success', text: 'IP guardada correctamente' });
         setConnectionStatus('unknown');
       } else {
-        throw new Error('Error al guardar configuración');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error al guardar configuración');
       }
     } catch (error) {
       console.error('Error guardando IP:', error);
-      setMessage({ type: 'error', text: 'Error al guardar la IP' });
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Error al guardar la IP' });
     } finally {
       setLoading(false);
     }
