@@ -5,13 +5,34 @@ import type { Product } from '../lib/inventory';
 
 interface ProductCardProps extends Product {}
 
-export function ProductCard({ id, title, price, rating, image, unit, stock }: ProductCardProps) {
+export function ProductCard({ 
+  id, 
+  title, 
+  price, 
+  rating, 
+  image, 
+  unit, 
+  stock,
+  slot,           // ✅ Agregado
+  slotDistance    // ✅ Agregado
+}: ProductCardProps) {
   const { dispatch } = useCart();
 
   const addToCart = () => {
     dispatch({
       type: 'ADD_ITEM',
-      payload: { id, title, price, quantity: 1, image, unit, stock, rating },
+      payload: { 
+        id, 
+        title, 
+        price, 
+        quantity: 1, 
+        image, 
+        unit, 
+        stock, 
+        rating,
+        slot,           // ✅ Agregado
+        slotDistance    // ✅ Agregado
+      },
     });
   };
 
@@ -22,6 +43,12 @@ export function ProductCard({ id, title, price, rating, image, unit, stock }: Pr
         {stock < 10 && (
           <span className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
             ¡Quedan {stock} unidades!
+          </span>
+        )}
+        {/* ✅ NUEVO: Indicador de slot configurado */}
+        {slot && slotDistance && (
+          <span className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">
+            Slot {slot}
           </span>
         )}
       </div>
