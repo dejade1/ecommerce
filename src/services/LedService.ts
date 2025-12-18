@@ -1,10 +1,55 @@
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
 class LedService {
-  private baseUrl: string = 'http://192.168.0.106'; // ✅ IP actualizada
+  private baseUrl: string = 'http://192.168.0.106'; // IP por defecto
   private isConnected: boolean = false;
+  private ipLoaded: boolean = false;
+
+  /**
+   * ✅ NUEVO: Cargar IP del ESP32 desde el backend
+   */
+  async loadESP32IP(): Promise<void> {
+    if (this.ipLoaded) return; // Solo cargar una vez
+
+    try {
+      const response = await fetch(`${API_URL}/settings/esp32_ip`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const ip = data.setting?.value;
+        
+        if (ip) {
+          this.baseUrl = `http://${ip}`;
+          this.ipLoaded = true;
+          console.log(`[LedService] ✅ IP ESP32 cargada: ${this.baseUrl}`);
+        }
+      } else {
+        console.warn('[LedService] ⚠ No se pudo cargar IP del backend, usando IP por defecto');
+      }
+    } catch (error) {
+      console.error('[LedService] Error cargando IP:', error);
+      console.warn('[LedService] Usando IP por defecto:', this.baseUrl);
+    }
+  }
+
+  /**
+   * ✅ NUEVO: Actualizar IP manualmente
+   */
+  setESP32IP(ip: string): void {
+    this.baseUrl = `http://${ip}`;
+    this.ipLoaded = true;
+    this.isConnected = false; // Resetear conexión
+    console.log(`[LedService] IP actualizada manualmente: ${this.baseUrl}`);
+  }
 
   async connect(): Promise<boolean> {
     try {
-      console.log('[LedService] Verificando conexión ESP32...');
+      // ✅ Cargar IP antes de conectar
+      await this.loadESP32IP();
+
+      console.log(`[LedService] Verificando conexión ESP32 en ${this.baseUrl}...`);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -28,7 +73,7 @@ class LedService {
       return false;
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.warn('[LedService] ⚠ Timeout: ESP32 no responde en 5 segundos');
+        console.warn(`[LedService] ⚠ Timeout: ESP32 no responde en ${this.baseUrl}`);
       } else {
         console.error('[LedService] ❌ Error conectando:', error.message);
       }
@@ -37,22 +82,11 @@ class LedService {
     }
   }
 
-  /**
-   * ✅ NUEVO: Enviar múltiples productos al ESP32 (formato correcto)
-   * Formato esperado por ESP32:
-   * {
-   *   "items": [
-   *     {"slot": 1, "quantity": 2, "slotDistance": 9.21},
-   *     {"slot": 2, "quantity": 1, "slotDistance": 8.30}
-   *   ]
-   * }
-   */
   async dispenseProducts(items: Array<{slot: number, quantity: number, slotDistance: number}>): Promise<boolean> {
     try {
       console.log(`[LedService] 📦 Dispensando ${items.length} productos:`, items);
 
       const controller = new AbortController();
-      // ✅ AUMENTADO: 30 segundos para dispensación múltiple (era 15s)
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       const response = await fetch(`${this.baseUrl}/dispense`, {
@@ -87,20 +121,16 @@ class LedService {
     }
   }
 
-  /**
-   * @deprecated Usar dispenseProducts() en su lugar
-   */
-  async sendProductSignal(productId: number, quantity: number): Promise<boolean> {
-    console.warn('[LedService] ⚠ sendProductSignal() está deprecado, usa dispenseProducts()');
-    return false;
-  }
-
   isSupported(): boolean {
     return true;
   }
 
   getConnectionStatus(): boolean {
     return this.isConnected;
+  }
+
+  getCurrentIP(): string {
+    return this.baseUrl.replace('http://', '');
   }
 }
 
