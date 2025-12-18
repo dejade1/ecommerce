@@ -45,3 +45,20 @@ dev.sqbpro
 logs/
 *.log
 nul
+
+# Security
+.env
+.env.local
+.env.*.local
+secrets/
+*.key
+*.pem
+*.crt
+
+# Logs
+logs/
+*.log
+
+# Backups
+*.backup
+*.backup.*
