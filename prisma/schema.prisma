@@ -80,3 +80,13 @@ model Batch {
   createdAt   DateTime @default(now())
   product     Product  @relation(fields: [productId], references: [id])
 }
+
+// ✅ NUEVO: Modelo de configuración del sistema
+model Settings {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique  // Clave de configuración (ej: "esp32_ip")
+  value       String   // Valor de configuración
+  description String?  // Descripción de la configuración
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
